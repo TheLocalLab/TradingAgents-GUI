@@ -6,6 +6,8 @@ A polished local web GUI on top of [TauricResearch/TradingAgents](https://github
 
 > **Educational software. Not financial advice. LLMs hallucinate — verify every claim before trading on it.**
 
+![TradingAgents-GUI — Analyze tab](assets/gui-analyze.png)
+
 ---
 
 ## What you get
@@ -199,7 +201,7 @@ I plan to keep this fork rebased on upstream as it evolves. The GUI deliberately
 ## Architecture
 
 ```
-TradingAgents-MyFork-v2/
+TradingAgents-GUI/
 ├── tradingagents/                ← upstream framework, untouched
 │   └── agents/utils/agent_utils.py   ← (one helper added: get_brevity_instruction)
 ├── cli/                          ← upstream CLI, untouched
