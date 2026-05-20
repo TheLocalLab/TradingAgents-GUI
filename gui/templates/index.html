@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradingAgents — Terminal</title>
+  <meta name="description" content="TradingAgents: Multi-Agent LLM Financial Trading Framework">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">📈</div>
+    <span class="logo-text">TradingAgents</span>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-btn active" data-tab="analyze" id="nav-analyze">
+      <span class="nav-icon">🔍</span><span>Analyze</span>
+    </button>
+    <button class="nav-btn" data-tab="config" id="nav-config">
+      <span class="nav-icon">⚙️</span><span>Configuration</span>
+    </button>
+    <button class="nav-btn" data-tab="apikeys" id="nav-apikeys">
+      <span class="nav-icon">🔑</span><span>API Keys</span>
+    </button>
+    <button class="nav-btn" data-tab="reports" id="nav-reports">
+      <span class="nav-icon">📋</span><span>Reports</span>
+    </button>
+    <button class="nav-btn" data-tab="chat" id="nav-chat">
+      <span class="nav-icon">💭</span><span>Chat</span>
+    </button>
+    <button class="nav-btn" data-tab="history" id="nav-history">
+      <span class="nav-icon">📚</span><span>History</span>
+    </button>
+    <button class="nav-btn" data-tab="setup" id="nav-setup">
+      <span class="nav-icon">🛠️</span><span>Setup</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="sidebar-footer-row">
+      <button class="theme-picker" id="theme-picker" title="Switch theme (Terminal/Modern/Bloomberg)">
+        <span class="theme-dot active" data-theme="terminal" title="Terminal"></span>
+        <span class="theme-dot" data-theme="modern" title="Modern"></span>
+        <span class="theme-dot" data-theme="bloomberg" title="Bloomberg"></span>
+      </button>
+      <div class="version-badge" id="version-badge">v0.2.5+gui.2</div>
+    </div>
+    <!-- Live run pill — visible from any tab. Clicking jumps to Analyze. -->
+    <button class="status-pill" id="global-status" onclick="if(window._currentRunActive) switchTab('analyze')">
+      <span class="status-dot idle"></span>
+      <span class="status-pill-body">
+        <span class="status-text">IDLE</span>
+        <span class="status-detail" id="status-detail"></span>
+      </span>
+    </button>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+<main id="main">
+  <div class="topbar-glow"></div>
+
+  <!-- ─── TAB: ANALYZE ─── -->
+  <section class="tab-panel active" id="tab-analyze">
+    <div class="panel-header">
+      <div>
+        <h1>Market Analysis</h1>
+        <p class="panel-sub">Configure a ticker, pick your analysts, then run a multi-agent debate.</p>
+      </div>
+      <!-- Inline cost estimate (updates as you change the form) -->
+      <div class="header-meta" id="header-meta">
+        <span class="meta-label">Est. cost</span>
+        <span class="meta-value" id="header-est-cost">—</span>
+      </div>
+    </div>
+
+    <div class="analyze-grid-v2">
+      <!-- ============== LEFT COLUMN — FORM ============== -->
+      <aside class="form-column">
+        <!-- Presets bar — save & reload form bundles across sessions -->
+        <div class="presets-bar" title="Save the current Analyze form as a named preset, or load one back. Form state is also auto-saved in your browser between visits.">
+          <select id="presets-select" class="presets-select">
+            <option value="">— Saved presets —</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="loadSelectedPreset()" title="Load selected preset">↻ Load</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="savePreset()" title="Save current form as preset">💾 Save</button>
+          <button type="button" class="btn btn-ghost btn-sm presets-del" onclick="deleteSelectedPreset()" title="Delete selected preset">🗑</button>
+        </div>
+
+        <!-- Section 1: What to analyze -->
+        <div class="form-card">
+          <div class="form-card-head">
+            <span class="form-card-num">1</span>
+            <div>
+              <h2 class="form-card-title">What to analyze</h2>
+              <p class="form-card-sub">Ticker symbol and the date the analysis is anchored to.</p>
+            </div>
+          </div>
+          <div class="form-card-body">
+            <div class="form-row tight">
+              <div class="form-group flex2">
+                <label for="ticker-input">Ticker symbol</label>
+                <input id="ticker-input" type="text" class="input-lg"
+                       placeholder="NVDA  AAPL  7203.T  CNC.TO  0700.HK"
+                       maxlength="20" autocomplete="off">
+                <span class="form-hint">Include the exchange suffix for non-US tickers.</span>
+              </div>
+              <div class="form-group flex1">
+                <label for="date-input">Analysis date</label>
+                <input id="date-input" type="date" class="input-lg">
+                <span class="form-hint">Today by default.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Analyst team -->
+        <div class="form-card">
+          <div class="form-card-head">
+            <span class="form-card-num">2</span>
+            <div>
+              <h2 class="form-card-title">Analyst team</h2>
+              <p class="form-card-sub">Tap each card to toggle. Each enabled analyst adds cost and time.</p>
+            </div>
+            <div class="form-card-meta" id="analyst-count-badge">4/4</div>
+          </div>
+          <div class="form-card-body">
+            <div class="analyst-grid-v2" id="analyst-grid">
+              <div class="analyst-card-v2 checked" data-analyst="market" id="card-market">
+                <input type="checkbox" value="market" checked>
+                <div class="analyst-icon-v2">📊</div>
+                <div class="analyst-body">
+                  <div class="analyst-name">Market</div>
+                  <div class="analyst-desc">Technicals: price action, RSI, MACD, Bollinger.</div>
+                </div>
+                <div class="analyst-check-mark">✓</div>
+              </div>
+              <div class="analyst-card-v2 checked" data-analyst="social" id="card-social">
+                <input type="checkbox" value="social" checked>
+                <div class="analyst-icon-v2">💬</div>
+                <div class="analyst-body">
+                  <div class="analyst-name">Sentiment</div>
+                  <div class="analyst-desc">Reddit + StockTwits retail mood; pre-fetched, no hallucination.</div>
+                </div>
+                <div class="analyst-check-mark">✓</div>
+              </div>
+              <div class="analyst-card-v2 checked" data-analyst="news" id="card-news">
+                <input type="checkbox" value="news" checked>
+                <div class="analyst-icon-v2">📰</div>
+                <div class="analyst-body">
+                  <div class="analyst-name">News</div>
+                  <div class="analyst-desc">Ticker + macro headlines, insider transactions.</div>
+                </div>
+                <div class="analyst-check-mark">✓</div>
+              </div>
+              <div class="analyst-card-v2 checked" data-analyst="fundamentals" id="card-fundamentals">
+                <input type="checkbox" value="fundamentals" checked>
+                <div class="analyst-icon-v2">📈</div>
+                <div class="analyst-body">
+                  <div class="analyst-name">Fundamentals</div>
+                  <div class="analyst-desc">Income statement, balance sheet, cash flow.</div>
+                </div>
+                <div class="analyst-check-mark">✓</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Depth + report length -->
+        <div class="form-card">
+          <div class="form-card-head">
+            <span class="form-card-num">3</span>
+            <div>
+              <h2 class="form-card-title">Depth &amp; length</h2>
+              <p class="form-card-sub">How thorough the debate is, and how long the saved report should be.</p>
+            </div>
+          </div>
+          <div class="form-card-body">
+            <label class="seg-label">Research depth
+              <span class="seg-label-hint">how many debate rounds the bull/bear/risk teams run</span>
+            </label>
+            <div class="seg-control" data-target="depth-input">
+              <button class="seg-btn" data-value="1">Shallow <small>1 round</small></button>
+              <button class="seg-btn active" data-value="3">Balanced <small>3 rounds</small></button>
+              <button class="seg-btn" data-value="5">Deep <small>5 rounds</small></button>
+            </div>
+            <input type="hidden" id="depth-input" value="3">
+
+            <label class="seg-label" style="margin-top:1.1rem">Report length
+              <span class="seg-label-hint">how verbose each saved section is — picks the right prompt budget</span>
+            </label>
+            <div class="seg-control" data-target="brevity-input">
+              <button class="seg-btn" data-value="concise">Concise <small>~300 words</small></button>
+              <button class="seg-btn active" data-value="standard">Standard <small>default</small></button>
+              <button class="seg-btn" data-value="comprehensive">Comprehensive <small>long-form</small></button>
+            </div>
+            <input type="hidden" id="brevity-input" value="standard">
+          </div>
+        </div>
+
+        <!-- Section 4: Advanced (collapsible) -->
+        <details class="form-card collapsible">
+          <summary class="form-card-head">
+            <span class="form-card-num">4</span>
+            <div>
+              <h2 class="form-card-title">Advanced</h2>
+              <p class="form-card-sub">Language, checkpoint behavior, and run-time overrides.</p>
+            </div>
+            <span class="form-card-chevron">›</span>
+          </summary>
+          <div class="form-card-body">
+            <div class="form-group">
+              <label for="language-select">Output language</label>
+              <select id="language-select">
+                <option value="English">English</option>
+                <option value="Chinese">Chinese (中文)</option>
+                <option value="Japanese">Japanese (日本語)</option>
+                <option value="Korean">Korean (한국어)</option>
+                <option value="Spanish">Spanish (Español)</option>
+                <option value="French">French (Français)</option>
+                <option value="German">German (Deutsch)</option>
+                <option value="Portuguese">Portuguese (Português)</option>
+                <option value="Russian">Russian (Русский)</option>
+                <option value="Arabic">Arabic (العربية)</option>
+              </select>
+              <span class="form-hint">Saved reports are written in this language; internal debate stays English.</span>
+            </div>
+            <div class="form-row tight" style="margin-top:.8rem">
+              <div class="form-check"><input type="checkbox" id="checkpoint-check">
+                <label for="checkpoint-check">Enable checkpoint resume <span class="form-hint inline">— rerun the same ticker+date to resume after a crash</span></label>
+              </div>
+            </div>
+            <div class="form-row tight">
+              <div class="form-check"><input type="checkbox" id="clear-check">
+                <label for="clear-check">Clear all checkpoints before this run</label>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Run controls (sticky to bottom of scroll on large screens) -->
+        <div class="run-actions-v2">
+          <button id="run-btn" class="btn btn-primary btn-xl" onclick="startAnalysis()">
+            <span class="btn-icon">▶</span><span>Run analysis</span>
+          </button>
+          <button id="stop-btn" class="btn btn-danger btn-xl" onclick="stopAnalysis()" style="display:none">
+            <span class="btn-icon">⏹</span><span>Stop</span>
+          </button>
+          <div class="run-cost-preview">
+            <span class="run-cost-label">est. cost</span>
+            <span class="run-cost-value" id="run-cost-value">—</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ============== RIGHT COLUMN — LIVE OUTPUT ============== -->
+      <div class="output-column">
+
+        <!-- Pipeline visualization -->
+        <div class="pipeline-card">
+          <div class="pipeline-header">
+            <div>
+              <h2 class="pipeline-title">Agent Pipeline</h2>
+              <p class="pipeline-status-text" id="pipeline-status">Waiting for run.</p>
+            </div>
+            <div class="pipeline-overall-progress">
+              <div class="progress-track">
+                <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+              </div>
+              <span class="progress-pct" id="progress-pct">0%</span>
+            </div>
+          </div>
+
+          <!-- Vertical stages with progress per stage -->
+          <div class="pipeline-stages" id="pipeline-stages">
+            <div class="stage" data-stage="analysts">
+              <div class="stage-bar"><div class="stage-bar-fill" id="stage-fill-analysts"></div></div>
+              <div class="stage-head"><span class="stage-num">01</span><span class="stage-name">Analysts</span><span class="stage-desc">Gather data per specialty</span></div>
+              <div class="stage-agents">
+                <div class="stage-agent pending" id="agent-Market-Analyst"><span class="sa-ic">📊</span><span class="sa-nm">Market</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Sentiment-Analyst"><span class="sa-ic">💬</span><span class="sa-nm">Sentiment</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-News-Analyst"><span class="sa-ic">📰</span><span class="sa-nm">News</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Fundamentals-Analyst"><span class="sa-ic">📈</span><span class="sa-nm">Fundamentals</span><span class="sa-st"></span></div>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="research">
+              <div class="stage-bar"><div class="stage-bar-fill" id="stage-fill-research"></div></div>
+              <div class="stage-head"><span class="stage-num">02</span><span class="stage-name">Research debate</span><span class="stage-desc">Bull/bear argue, manager decides</span></div>
+              <div class="stage-agents">
+                <div class="stage-agent pending" id="agent-Bull-Researcher"><span class="sa-ic">🐂</span><span class="sa-nm">Bull</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Bear-Researcher"><span class="sa-ic">🐻</span><span class="sa-nm">Bear</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Research-Manager"><span class="sa-ic">🧑‍💼</span><span class="sa-nm">Manager</span><span class="sa-st"></span></div>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="trader">
+              <div class="stage-bar"><div class="stage-bar-fill" id="stage-fill-trader"></div></div>
+              <div class="stage-head"><span class="stage-num">03</span><span class="stage-name">Trade plan</span><span class="stage-desc">Translate decision to a concrete plan</span></div>
+              <div class="stage-agents">
+                <div class="stage-agent pending" id="agent-Trader"><span class="sa-ic">💼</span><span class="sa-nm">Trader</span><span class="sa-st"></span></div>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="risk">
+              <div class="stage-bar"><div class="stage-bar-fill" id="stage-fill-risk"></div></div>
+              <div class="stage-head"><span class="stage-num">04</span><span class="stage-name">Risk debate</span><span class="stage-desc">Three risk officers stress-test the plan</span></div>
+              <div class="stage-agents">
+                <div class="stage-agent pending" id="agent-Aggressive-Analyst"><span class="sa-ic">🔥</span><span class="sa-nm">Aggressive</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Neutral-Analyst"><span class="sa-ic">⚖️</span><span class="sa-nm">Neutral</span><span class="sa-st"></span></div>
+                <div class="stage-agent pending" id="agent-Conservative-Analyst"><span class="sa-ic">🛡️</span><span class="sa-nm">Conservative</span><span class="sa-st"></span></div>
+              </div>
+            </div>
+
+            <div class="stage" data-stage="portfolio">
+              <div class="stage-bar"><div class="stage-bar-fill" id="stage-fill-portfolio"></div></div>
+              <div class="stage-head"><span class="stage-num">05</span><span class="stage-name">Final decision</span><span class="stage-desc">Portfolio Manager signs off</span></div>
+              <div class="stage-agents">
+                <div class="stage-agent pending" id="agent-Portfolio-Manager"><span class="sa-ic">🏦</span><span class="sa-nm">Portfolio Mgr</span><span class="sa-st"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats bar -->
+          <div class="stats-bar-v2" id="stats-bar">
+            <div class="stat-cell"><span class="stat-k">Agents</span><span class="stat-v" id="stat-agents">0/0</span></div>
+            <div class="stat-cell"><span class="stat-k">Reports</span><span class="stat-v" id="stat-reports">0/0</span></div>
+            <div class="stat-cell"><span class="stat-k">LLM</span><span class="stat-v" id="stat-llm">0</span></div>
+            <div class="stat-cell"><span class="stat-k">Tools</span><span class="stat-v" id="stat-tools">0</span></div>
+            <div class="stat-cell"><span class="stat-k">Tokens</span><span class="stat-v" id="stat-tokens">0 / 0</span></div>
+            <div class="stat-cell"><span class="stat-k">Cost</span><span class="stat-v" id="stat-cost">$0.000</span></div>
+            <div class="stat-cell"><span class="stat-k">Elapsed</span><span class="stat-v" id="stat-elapsed">00:00</span></div>
+          </div>
+        </div>
+
+        <!-- Final decision card (shown on completion) -->
+        <div class="decision-card" id="decision-card" style="display:none">
+          <div class="decision-icon" id="decision-icon">★</div>
+          <div class="decision-body">
+            <div class="decision-label">Final decision</div>
+            <div class="decision-text" id="decision-text">—</div>
+          </div>
+          <div class="decision-actions">
+            <button class="btn btn-ghost btn-sm" onclick="copyDecision()">📋 Copy</button>
+          </div>
+        </div>
+
+        <!-- Output tabs -->
+        <div class="output-tabs-card">
+          <div class="output-tabs" role="tablist">
+            <button class="output-tab active" data-otab="feed" role="tab">Live Feed</button>
+            <button class="output-tab" data-otab="report" role="tab">Reports</button>
+            <button class="output-tab" data-otab="tools" role="tab">Tool calls</button>
+          </div>
+
+          <!-- Feed -->
+          <div class="output-pane active" data-opane="feed">
+            <div class="pane-head">
+              <span class="pane-head-meta" id="feed-meta">Idle</span>
+              <button class="btn btn-ghost btn-sm" onclick="clearFeed()">Clear</button>
+            </div>
+            <div id="message-feed" class="message-feed-v2">
+              <div class="feed-placeholder">
+                <div class="feed-icon">⌂</div>
+                <p>Launch an analysis to see agent activity here.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reports -->
+          <div class="output-pane" data-opane="report">
+            <div class="pane-head">
+              <div class="report-tabs" id="report-tabs"></div>
+            </div>
+            <div id="report-content" class="report-content markdown-body">
+              <div class="feed-placeholder">
+                <div class="feed-icon">📄</div>
+                <p>Report sections will appear here as each analyst finishes.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tool calls -->
+          <div class="output-pane" data-opane="tools">
+            <div class="pane-head">
+              <span class="pane-head-meta">Most recent tool invocations.</span>
+            </div>
+            <div id="tool-calls" class="tool-calls">
+              <div class="feed-placeholder">
+                <p>No tool calls yet.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: CONFIGURATION ─── -->
+  <section class="tab-panel" id="tab-config">
+    <div class="panel-header">
+      <h1>Model Configuration</h1>
+      <p class="panel-sub">Choose your LLM provider and models</p>
+    </div>
+
+    <div class="config-cards">
+      <div class="card">
+        <h2 class="card-title">LLM Provider</h2>
+        <div class="provider-grid" id="provider-grid"></div>
+      </div>
+
+      <div class="card" id="model-select-card">
+        <h2 class="card-title">Model Selection</h2>
+        <div class="form-row">
+          <div class="form-group flex1">
+            <label for="quick-model-select">Quick-Thinking Model <span class="badge">Fast tasks</span></label>
+            <select id="quick-model-select"></select>
+            <span class="form-hint">Used for routine agent tasks</span>
+          </div>
+          <div class="form-group flex1">
+            <label for="deep-model-select">Deep-Thinking Model <span class="badge badge-purple">Complex reasoning</span></label>
+            <select id="deep-model-select"></select>
+            <span class="form-hint">Used for analysis & debates</span>
+          </div>
+        </div>
+        <!-- Provider-specific settings -->
+        <div id="provider-settings"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Data Vendors</h2>
+        <p class="card-desc">Configure data sources for each analysis category.</p>
+        <div class="form-row">
+          <div class="form-group flex1">
+            <label for="vendor-core">Core Stock APIs</label>
+            <select id="vendor-core">
+              <option value="yfinance">yfinance (free, no key needed)</option>
+              <option value="alpha_vantage">Alpha Vantage (requires API key)</option>
+            </select>
+          </div>
+          <div class="form-group flex1">
+            <label for="vendor-technical">Technical Indicators</label>
+            <select id="vendor-technical">
+              <option value="yfinance">yfinance</option>
+              <option value="alpha_vantage">Alpha Vantage</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group flex1">
+            <label for="vendor-fundamental">Fundamental Data</label>
+            <select id="vendor-fundamental">
+              <option value="yfinance">yfinance</option>
+              <option value="alpha_vantage">Alpha Vantage</option>
+            </select>
+          </div>
+          <div class="form-group flex1">
+            <label for="vendor-news">News Data</label>
+            <select id="vendor-news">
+              <option value="yfinance">yfinance</option>
+              <option value="alpha_vantage">Alpha Vantage</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveConfig()">💾 Save Configuration</button>
+        <span id="config-saved-msg" class="saved-msg" style="display:none">✓ Saved</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: API KEYS ─── -->
+  <section class="tab-panel" id="tab-apikeys">
+    <div class="panel-header">
+      <h1>API Keys</h1>
+      <p class="panel-sub">Keys are saved to your local <code>.env</code> file and never transmitted.</p>
+    </div>
+
+    <div class="apikeys-grid">
+      <div class="card">
+        <h2 class="card-title">LLM Providers</h2>
+        <div class="key-group" id="llm-keys">
+          <!-- injected by JS -->
+        </div>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Data Providers</h2>
+        <div class="key-group" id="data-keys"></div>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Enterprise (Azure OpenAI)</h2>
+        <div class="key-group" id="enterprise-keys"></div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:1.5rem">
+      <button class="btn btn-primary" onclick="saveApiKeys()">🔒 Save API Keys</button>
+      <span id="keys-saved-msg" class="saved-msg" style="display:none">✓ Saved securely to .env</span>
+    </div>
+  </section>
+
+  <!-- ─── TAB: REPORTS (v2) ─── -->
+  <section class="tab-panel" id="tab-reports">
+    <div class="panel-header">
+      <div>
+        <h1>Saved Reports</h1>
+        <p class="panel-sub">Past analyses by ticker and date. Click a section to jump to it.</p>
+      </div>
+      <div class="reports-toolbar">
+        <div class="reports-picker">
+          <label for="reports-select" class="reports-picker-label">Report</label>
+          <select id="reports-select" class="reports-select" onchange="window.openReportFromSelect && window.openReportFromSelect(this.value)">
+            <option value="">— No report selected —</option>
+          </select>
+          <span class="reports-index-count" id="reports-count">0</span>
+        </div>
+        <input type="search" id="reports-search" class="reports-search"
+               placeholder="🔍 Filter by ticker or decision">
+        <button class="btn btn-ghost btn-sm" id="report-toc-toggle"
+                onclick="window.toggleReportToc && window.toggleReportToc()" title="Toggle section sidebar">
+          ☰ Sections
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="loadReportsList()" title="Refresh">⟳</button>
+      </div>
+    </div>
+
+    <div class="reports-layout-v2" id="reports-layout">
+      <!-- Hidden list backing the dropdown — populated by JS (legacy id kept) -->
+      <div id="reports-list" hidden></div>
+
+      <!-- ============ TOC SIDEBAR (collapsible) ============ -->
+      <aside class="report-toc-card" id="report-toc-card">
+        <div class="report-toc-head">
+          <span class="report-toc-title">Sections</span>
+          <button class="toc-close-btn" onclick="window.toggleReportToc && window.toggleReportToc()" title="Hide">×</button>
+        </div>
+        <nav id="report-toc" class="report-toc">
+          <p class="report-toc-empty">Open a report to see its sections.</p>
+        </nav>
+      </aside>
+
+      <!-- ============ COLUMN 3: READER ============ -->
+      <div class="report-reader-card-v2">
+        <!-- Decision-at-a-glance card -->
+        <div class="report-summary-bar" id="report-summary-bar" style="display:none">
+          <div class="rsb-left">
+            <div class="rsb-ticker" id="rsb-ticker">—</div>
+            <div class="rsb-meta"><span id="rsb-date">—</span></div>
+          </div>
+          <div class="rsb-decision">
+            <span class="rsb-decision-label">Decision</span>
+            <span class="rsb-decision-text" id="rsb-decision">—</span>
+          </div>
+          <div class="rsb-actions">
+            <button class="btn btn-ghost btn-sm" id="rsb-rerun-today"
+                    onclick="rerunReportToday()" title="Re-run on today's date">
+              ▶ Re-run today
+            </button>
+            <div class="rsb-export">
+              <button class="btn btn-ghost btn-sm" id="rsb-export-toggle">⬇ Export</button>
+              <div class="rsb-export-menu" id="rsb-export-menu">
+                <button onclick="exportReport('md')">.md</button>
+                <button onclick="exportReport('html')">.html</button>
+                <button onclick="exportReport('pdf')">.pdf</button>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="deleteCurrentReport()" title="Delete this report">🗑</button>
+          </div>
+        </div>
+
+        <div id="report-reader" class="report-content markdown-body" data-empty="true">
+          <div class="feed-placeholder">
+            <div class="feed-icon">📋</div>
+            <p>Pick a report from the left.</p>
+            <p class="form-hint">Run a new analysis from the <strong>Analyze</strong> tab to add to your archive.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: CHAT (v2 implementation) ─── -->
+  <section class="tab-panel" id="tab-chat">
+    <div class="panel-header">
+      <div>
+        <h1>Chat</h1>
+        <p class="panel-sub">Talk to the AI. Pin past analysis reports as context for grounded answers.</p>
+      </div>
+    </div>
+    <div class="chat-layout" id="chat-layout">
+      <!-- Session list (collapsible) -->
+      <aside class="chat-sessions-card" id="chat-sessions-card">
+        <div class="chat-sessions-head">
+          <span class="chat-sessions-title">Sessions</span>
+          <div class="chat-sessions-head-actions">
+            <button class="btn btn-primary btn-sm" onclick="chatNewSession()" title="New chat">＋</button>
+            <button class="btn btn-ghost btn-sm chat-sessions-collapse"
+                    onclick="window.toggleChatSessions && window.toggleChatSessions()"
+                    title="Hide session list">‹</button>
+          </div>
+        </div>
+        <div id="chat-sessions-list" class="chat-sessions-list">
+          <div class="feed-placeholder"><p>No chats yet — click <strong>＋</strong>.</p></div>
+        </div>
+      </aside>
+      <button class="chat-sessions-expand" id="chat-sessions-expand"
+              onclick="window.toggleChatSessions && window.toggleChatSessions()"
+              title="Show sessions" style="display:none">›</button>
+
+      <!-- Active session pane -->
+      <div class="chat-active-card" id="chat-active">
+        <!-- Empty state -->
+        <div class="chat-active-empty" id="chat-active-empty">
+          <div class="feed-icon">💭</div>
+          <p>Pick a session on the left, or click <strong>＋ New</strong> to start a chat.</p>
+          <p class="form-hint">Chats can pin past reports as context. Switch models any time.</p>
+        </div>
+
+        <!-- Loaded session -->
+        <div class="chat-thread-wrap" id="chat-thread-wrap" style="display:none">
+          <!-- Header -->
+          <div class="chat-thread-head">
+            <div class="chat-title-block">
+              <input type="text" class="chat-title-input" id="chat-title-input"
+                     placeholder="Untitled chat" />
+              <div class="chat-meta-line">
+                <span class="chat-meta-key">Provider</span>
+                <select id="chat-provider-select" class="chat-model-select chat-provider-select"></select>
+                <span class="chat-meta-key">Model</span>
+                <select id="chat-model-select" class="chat-model-select"></select>
+                <button class="chat-model-refresh" id="chat-model-refresh"
+                        onclick="window.chatRefreshModels && window.chatRefreshModels()"
+                        title="Refresh available models (after saving new API keys)">⟳</button>
+                <span class="chat-meta-spacer">·</span>
+                <span class="chat-tokens-pill" id="chat-tokens-pill" title="Context size so far">
+                  <span id="chat-tokens-used">0</span> /
+                  <span id="chat-tokens-window">128k</span>
+                </span>
+              </div>
+            </div>
+            <div class="chat-thread-actions">
+              <button class="btn btn-ghost btn-sm" onclick="chatShowSystemPreview()" title="View what the model receives as system context (verify pinned reports made it in)">👁 Context</button>
+              <button class="btn btn-ghost btn-sm" onclick="chatExport()" title="Export this chat as Markdown">⬇</button>
+              <button class="btn btn-ghost btn-sm" onclick="chatDelete()" title="Delete this chat">🗑</button>
+            </div>
+          </div>
+
+          <!-- Pinned reports bar -->
+          <div class="chat-pins-bar">
+            <span class="chat-pins-label">Pinned:</span>
+            <div class="chat-pins" id="chat-pins"></div>
+            <button class="btn btn-ghost btn-sm chat-pin-add" onclick="chatOpenPinPicker()"
+                    title="Pin a saved report to this chat">＋ Add report</button>
+          </div>
+
+          <!-- Message thread -->
+          <div class="chat-thread" id="chat-thread"></div>
+
+          <!-- Input -->
+          <div class="chat-input-wrap">
+            <textarea id="chat-input" class="chat-input"
+                      placeholder="Ask anything about your reports or a ticker… (Enter to send, Shift+Enter for newline)"
+                      rows="2"></textarea>
+            <div class="chat-input-actions">
+              <span class="chat-input-hint" id="chat-input-hint">Enter sends · Shift+Enter for a new line</span>
+              <button class="btn btn-primary btn-sm" id="chat-send-btn" onclick="chatSend()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pin-picker popover -->
+    <div class="chat-pin-picker" id="chat-pin-picker" style="display:none" onclick="event.stopPropagation()">
+      <div class="chat-pin-picker-head">
+        <span>Pin a report</span>
+        <button class="btn btn-ghost btn-sm" onclick="chatClosePinPicker()">✕</button>
+      </div>
+      <input type="search" id="chat-pin-search" class="reports-search" placeholder="🔍 Filter reports">
+      <div id="chat-pin-list" class="chat-pin-list">
+        <div class="feed-placeholder"><p>Loading…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: HISTORY ─── -->
+  <section class="tab-panel" id="tab-history">
+    <div class="panel-header">
+      <h1>Decision History</h1>
+      <p class="panel-sub">Persistent memory log — agents learn from past decisions</p>
+    </div>
+    <div class="card" style="height:calc(100vh - 220px)">
+      <div class="card-title-row">
+        <h2 class="card-title">trading_memory.md</h2>
+        <button class="btn btn-ghost btn-sm" onclick="loadHistory()">🔄 Refresh</button>
+      </div>
+      <div id="history-content" class="report-content markdown-body" style="height:calc(100% - 50px); overflow:auto;">
+        <div class="feed-placeholder"><p>Loading history...</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: SETUP (v2 — live health panel) ─── -->
+  <section class="tab-panel" id="tab-setup">
+    <div class="panel-header">
+      <div>
+        <h1>System Health</h1>
+        <p class="panel-sub">Live diagnostics for this install. Everything green means you're ready to run.</p>
+      </div>
+      <div class="health-overall" id="health-overall">
+        <span class="health-overall-dot"></span>
+        <span class="health-overall-text">Checking…</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadHealth()" title="Re-run checks">⟳</button>
+      </div>
+    </div>
+
+    <div class="health-layout">
+      <!-- Main: live check list -->
+      <div class="health-checks-card">
+        <div class="health-checks-head">
+          <span class="health-checks-title">Diagnostics</span>
+        </div>
+        <div id="health-checks" class="health-checks">
+          <div class="feed-placeholder"><p>Running checks…</p></div>
+        </div>
+      </div>
+
+      <!-- Side: quick-start + about -->
+      <aside class="health-side">
+        <div class="card health-side-card">
+          <h3 class="health-side-title">Quick start</h3>
+          <ol class="health-quickstart">
+            <li>Open the <a href="#" onclick="switchTab('apikeys');return false">API Keys</a> tab and paste a provider key.</li>
+            <li>Pick your default models in <a href="#" onclick="switchTab('config');return false">Configuration</a>.</li>
+            <li>Head to <a href="#" onclick="switchTab('analyze');return false">Analyze</a>, type a ticker, click Run.</li>
+          </ol>
+        </div>
+        <div class="card health-side-card">
+          <h3 class="health-side-title">About</h3>
+          <div class="health-about-row"><span>GUI</span><span id="health-info-gui">—</span></div>
+          <div class="health-about-row"><span>Framework</span><span id="health-info-framework">—</span></div>
+          <div class="health-about-row"><span>Python</span><span id="health-info-python">—</span></div>
+          <div class="health-about-row"><span>Platform</span><span id="health-info-platform">—</span></div>
+        </div>
+        <div class="card health-side-card">
+          <h3 class="health-side-title">Install / start</h3>
+          <p class="form-hint">After the first <code>install.bat</code> (or <code>install.sh</code>), use <code>start.bat</code> / <code>start.sh</code> for subsequent launches — no reinstall.</p>
+          <div class="install-missing-row">
+            <button class="btn btn-primary btn-sm" id="install-missing-btn"
+                    onclick="window.installMissingDeps && window.installMissingDeps(false)"
+                    title="Pip-install anything that's missing into this Python">
+              ⬇ Install missing deps
+            </button>
+            <label class="install-missing-opt">
+              <input type="checkbox" id="install-include-pdf">
+              also install PDF export (weasyprint)
+            </label>
+          </div>
+          <pre id="install-missing-output" class="code-block install-missing-output" style="display:none"></pre>
+          <p class="form-hint" style="margin-top:.6rem">
+            This runs <code>pip install</code> inside <em>this</em> running Python, so you
+            don't need to activate a venv first.
+          </p>
+          <details class="health-old-instructions">
+            <summary>Manual install (advanced)</summary>
+            <pre class="code-block">python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[gui]"
+python -m gui.app</pre>
+          </details>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ─── FIRST-RUN WIZARD MODAL (Phase 6) ─── -->
+  <div class="wizard-overlay" id="wizard-overlay" style="display:none">
+    <div class="wizard-modal">
+      <div class="wizard-head">
+        <h2>Welcome to TradingAgents</h2>
+        <p>~30 seconds to your first run. You can change everything later from the tabs.</p>
+        <div class="wizard-steps" id="wizard-steps">
+          <span class="wizard-dot active"></span><span class="wizard-dot"></span><span class="wizard-dot"></span>
+        </div>
+      </div>
+
+      <!-- Step 1: pick provider -->
+      <div class="wizard-step active" data-step="1">
+        <h3>1. Pick an LLM provider</h3>
+        <p class="form-hint">You can switch later. OpenAI is the most-tested default.</p>
+        <div id="wizard-providers" class="wizard-providers"></div>
+      </div>
+
+      <!-- Step 2: paste key -->
+      <div class="wizard-step" data-step="2">
+        <h3>2. Paste your API key</h3>
+        <p class="form-hint">Saved to <code>.env</code> in your project folder. Never sent anywhere except the provider.</p>
+        <p class="wizard-env-label">Environment variable: <code id="wizard-env-name">—</code></p>
+        <input type="password" id="wizard-key-input" class="input-lg" placeholder="sk-...">
+        <div class="wizard-test-row">
+          <button class="btn btn-primary btn-sm" id="wizard-test-btn" onclick="wizardTestKey()">Test connection</button>
+          <span class="wizard-test-status" id="wizard-test-status"></span>
+        </div>
+      </div>
+
+      <!-- Step 3: done -->
+      <div class="wizard-step" data-step="3">
+        <h3>3. You're ready</h3>
+        <ul class="wizard-tour">
+          <li>📈 <strong>Analyze</strong> — start a new run</li>
+          <li>📋 <strong>Reports</strong> — past results with TOC + export</li>
+          <li>💭 <strong>Chat</strong> — talk with AI about your reports</li>
+          <li>⚙️ <strong>Configuration</strong> — change models</li>
+          <li>🔑 <strong>API Keys</strong> — add more provider keys</li>
+        </ul>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn btn-ghost" onclick="closeWizard(true)">Skip</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost" id="wizard-back-btn" onclick="wizardBack()" style="display:none">← Back</button>
+        <button class="btn btn-primary" id="wizard-next-btn" onclick="wizardNext()">Next →</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════ TOAST ═══════════════ -->
+<div id="toast-container"></div>
+
+<!-- ═══════════════ MODAL ═══════════════ -->
+<div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/app_v2.js"></script>
+</body>
+</html>
