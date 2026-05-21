@@ -42,7 +42,7 @@ The framework itself (agents, prompts, dataflows) is **unchanged from upstream**
 - **Git** (only if you're cloning manually — the one-click installer handles this)
 - An API key for at least one LLM provider (OpenAI, Anthropic, Google, OpenRouter, DeepSeek, xAI, Qwen, GLM, MiniMax, or local Ollama)
 
-Don't have Python? The **one-click installer below** ships its own Python 3.11 (via portable Miniconda) and Git — nothing else to install.
+Don't have Python? On **Windows**, the [one-click installer below](#zero-install-windows--recommended-for-new-users) ships its own Python 3.11 (via portable Miniconda) and Git — nothing else to install. On **macOS / Linux**, install Python via your package manager (`brew install python@3.12`, `sudo apt install python3.12 python3.12-venv`, `sudo dnf install python3.12`) and use the manual path below.
 
 ## Quickstart
 
