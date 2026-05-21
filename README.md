@@ -36,9 +36,21 @@ The framework itself (agents, prompts, dataflows) is **unchanged from upstream**
 
 ---
 
+## Prerequisites
+
+- **Python 3.10 or newer** (3.11 recommended)
+- **Git** (only if you're cloning manually — the one-click installer handles this)
+- An API key for at least one LLM provider (OpenAI, Anthropic, Google, OpenRouter, DeepSeek, xAI, Qwen, GLM, MiniMax, or local Ollama)
+
+Don't have Python? The **one-click installer below** ships its own Python 3.11 (via portable Miniconda) and Git — nothing else to install.
+
 ## Quickstart
 
-### One-time install
+### Zero-install (Windows) — recommended for new users
+
+Download [`TradingAgents-GUI-OneClick.bat`](TradingAgents-GUI-OneClick.bat), drop it in an empty folder, double-click it. It installs portable Git + Miniconda + Python 3.11, clones the repo, installs dependencies, and creates `start_WebUI.bat` for future launches. Safe to re-run (skip-if-exists at every step).
+
+### Manual install — if you already have Python 3.10+
 
 **Windows**
 
