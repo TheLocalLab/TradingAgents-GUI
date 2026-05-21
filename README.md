@@ -258,5 +258,6 @@ Same as upstream — see [LICENSE](LICENSE).
 Maintained by **The Local Lab**. Tune in for the best available AI tools, made easy.
 
 - 🎥 **YouTube** — [youtube.com/@TheLocalLab](https://www.youtube.com/@TheLocalLab)
+- 💬 **Discord** — [discord.gg/5hmB4N4JFc](https://discord.gg/5hmB4N4JFc) — community chat, support, and feedback
 - 💖 **Patreon** — [patreon.com/cw/TheLocalLab](https://www.patreon.com/cw/TheLocalLab) — exclusive one-click Windows installers, ComfyUI workflows, and AI resources. Skip the manual node + model setup and get straight to creating.
 - 🐦 **X** — [@TheLocalLab_](https://x.com/TheLocalLab_)
