@@ -48,7 +48,9 @@ Don't have Python? On **Windows**, the [one-click installer below](#zero-install
 
 ### Zero-install (Windows) — recommended for new users
 
-Download [`TradingAgents-GUI-OneClick.bat`](TradingAgents-GUI-OneClick.bat), drop it in an empty folder, double-click it. It installs portable Git + Miniconda + Python 3.11, clones the repo, installs dependencies, and creates `start_WebUI.bat` for future launches. Safe to re-run (skip-if-exists at every step).
+Support the project by getting the one-click Windows installer from my Patreon post. Download `TradingAgents-GUI-OneClick.bat`, place it in an empty folder, and double-click it. It installs portable Git, Miniconda, and Python 3.11, clones the repo, installs dependencies, and creates `start_WebUI.bat` for future launches. Safe to re-run; it skips anything that already exists.
+
+Access the installer here: [Patreon post](https://www.patreon.com/posts/trading-agents-158823717)
 
 ### Manual install — if you already have Python 3.10+
 
