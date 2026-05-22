@@ -29,7 +29,7 @@ import functools
 import logging
 import re
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 _logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def normalize_date(
     ``2026/05/19``, ``2026.05.19``, ``2026-5-9`` → reformatted.
     Anything else → ``ValueError`` (caller decides how to surface).
     """
-    base = today or datetime.utcnow()
+    base = today or datetime.now(timezone.utc).replace(tzinfo=None)
     if value is None:
         return (base + timedelta(days=default_offset_days)).strftime("%Y-%m-%d")
     if not isinstance(value, str):

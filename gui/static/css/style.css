@@ -1825,6 +1825,22 @@ html[data-theme="modern"] .nav-btn { border-radius: 10px; }
   font-size: .9rem; font-weight: 500; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.chat-session-name-row {
+  display: flex; align-items: center; gap: .3rem;
+}
+.chat-session-rename-btn {
+  opacity: 0; border: none; background: none; color: var(--text-dim);
+  font-size: .75rem; cursor: pointer; padding: .1rem .25rem; border-radius: 4px;
+  flex-shrink: 0; line-height: 1; transition: opacity .15s, color .12s;
+}
+.chat-session-entry:hover .chat-session-rename-btn { opacity: 1; }
+.chat-session-rename-btn:hover { color: var(--accent); }
+.chat-session-rename-input {
+  font-size: .9rem; font-weight: 500; color: var(--text);
+  background: var(--bg-card, #111827); border: 1px solid var(--accent-soft, rgba(78,140,255,0.35));
+  border-radius: 4px; padding: .15rem .35rem; width: 100%;
+  outline: none; font-family: inherit;
+}
 .chat-session-meta {
   font-size: .7rem; color: var(--text-dim);
   font-family: 'JetBrains Mono', monospace;

@@ -160,6 +160,9 @@ def _retry_on_transient(fn, *, attempts: int = 4, base_delay: float = 1.5):
     for i in range(attempts):
         try:
             return fn()
+        except (ValueError, KeyError, TypeError, AttributeError,
+                AssertionError, NotImplementedError) as exc:
+            raise
         except Exception as exc:  # noqa: BLE001 — broad catch on purpose
             if not _is_transient_openrouter_error(exc) or i == attempts - 1:
                 raise

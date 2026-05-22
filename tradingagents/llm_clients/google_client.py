@@ -110,13 +110,17 @@ class GoogleClient(BaseLLMClient):
         if thinking_level:
             model_lower = self.model.lower()
             if "gemini-3" in model_lower:
-                # Gemini 3 Pro doesn't support "minimal", use "low" instead
                 if "pro" in model_lower and thinking_level == "minimal":
                     thinking_level = "low"
                 llm_kwargs["thinking_level"] = thinking_level
             else:
-                # Gemini 2.5: map to thinking_budget
-                llm_kwargs["thinking_budget"] = -1 if thinking_level == "high" else 0
+                budget_map = {
+                    "minimal": 1024,
+                    "low": 4096,
+                    "medium": 8192,
+                    "high": -1,
+                }
+                llm_kwargs["thinking_budget"] = budget_map.get(thinking_level, -1)
 
         return NormalizedChatGoogleGenerativeAI(**llm_kwargs)
 

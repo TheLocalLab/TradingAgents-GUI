@@ -42,10 +42,14 @@ class AlphaVantageRateLimitError(Exception):
 def _make_api_request(function_name: str, params: dict) -> dict | str:
     """Helper function to make API requests and handle responses.
     
+    Returns a dict for JSON endpoints (fundamentals, news, insider) and a
+    str for CSV endpoints (stock prices, indicators). The return type
+    depends on the ``datatype`` param — ``csv`` yields the raw text,
+    everything else is parsed as JSON.
+    
     Raises:
         AlphaVantageRateLimitError: When API rate limit is exceeded
     """
-    # Create a copy of params to avoid modifying the original
     api_params = params.copy()
     api_params.update({
         "function": function_name,
@@ -53,14 +57,12 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
         "source": "trading_agents",
     })
     
-    # Handle entitlement parameter if present in params or global variable
     current_entitlement = globals().get('_current_entitlement')
     entitlement = api_params.get("entitlement") or current_entitlement
     
     if entitlement:
         api_params["entitlement"] = entitlement
     elif "entitlement" in api_params:
-        # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
     
     response = requests.get(API_BASE_URL, params=api_params)
@@ -68,17 +70,19 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
 
     response_text = response.text
     
-    # Check if response is JSON (error responses are typically JSON)
+    is_csv = api_params.get("datatype") == "csv"
+    
     try:
         response_json = json.loads(response_text)
-        # Check for rate limit error
         if "Information" in response_json:
             info_message = response_json["Information"]
             if "rate limit" in info_message.lower() or "api key" in info_message.lower():
                 raise AlphaVantageRateLimitError(f"Alpha Vantage rate limit exceeded: {info_message}")
+        if not is_csv:
+            return response_json
     except json.JSONDecodeError:
-        # Response is not JSON (likely CSV data), which is normal
-        pass
+        if not is_csv:
+            return response_text
 
     return response_text
 

@@ -1137,6 +1137,15 @@
     pendingBubble: null,
   };
 
+  function _deriveTitle(text) {
+    let t = text.replace(/\n/g, " ").trim();
+    if (t.length > 60) {
+      const cut = t.lastIndexOf(" ", 57);
+      t = t.slice(0, cut > 0 ? cut : 57) + "…";
+    }
+    return t || "New chat";
+  }
+
   /** Load the sidebar session list. */
   async function chatLoadSessions() {
     try {
@@ -1161,15 +1170,54 @@
       const entry = document.createElement("div");
       entry.className = "chat-session-entry" + (s.id === _chat.activeId ? " active" : "");
       entry.innerHTML = `
-        <div class="chat-session-name">${escapeHtml(s.name || "Untitled")}</div>
+        <div class="chat-session-name-row">
+          <div class="chat-session-name">${escapeHtml(s.name || "Untitled")}</div>
+          <button class="chat-session-rename-btn" title="Rename" data-sid="${s.id}">✎</button>
+        </div>
         <div class="chat-session-meta">
           <span>${s.msg_count || 0} msg</span>
           ${s.attached ? `<span class="chat-session-pin-count">${s.attached} pinned</span>` : ""}
         </div>
       `;
-      entry.addEventListener("click", () => chatOpenSession(s.id));
+      entry.addEventListener("click", (e) => {
+        if (e.target.closest(".chat-session-rename-btn")) return;
+        chatOpenSession(s.id);
+      });
+      entry.querySelector(".chat-session-rename-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        _startSidebarRename(s.id, s.name || "");
+      });
       c.appendChild(entry);
     }
+  }
+
+  function _startSidebarRename(sid, currentName) {
+    const entry = document.querySelector(`.chat-session-rename-btn[data-sid="${sid}"]`)
+      ?.closest(".chat-session-entry");
+    if (!entry) return;
+    const nameEl = entry.querySelector(".chat-session-name");
+    if (!nameEl) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "chat-session-rename-input";
+    input.value = currentName;
+    input.placeholder = "Session name";
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    const finish = async () => {
+      const newName = input.value.trim() || "Untitled";
+      await chatRename(sid, newName);
+      if (_chat.activeId === sid) {
+        const titleInp = document.getElementById("chat-title-input");
+        if (titleInp) titleInp.value = newName;
+      }
+    };
+    input.addEventListener("blur", finish);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      if (e.key === "Escape") { input.value = currentName; input.blur(); }
+    });
   }
 
   /** Create a new chat session and open it. */
@@ -1432,6 +1480,16 @@
     inp.value = "";
     const sendBtn = document.getElementById("chat-send-btn");
     sendBtn.disabled = true;
+
+    const activeSession = _chat.sessions.find(s => s.id === _chat.activeId);
+    const isUntitled = !activeSession || activeSession.name === "New chat" || activeSession.name === "Untitled";
+
+    if (isUntitled) {
+      const autoTitle = _deriveTitle(text);
+      await chatRename(_chat.activeId, autoTitle);
+      const titleInp = document.getElementById("chat-title-input");
+      if (titleInp) titleInp.value = autoTitle;
+    }
 
     // Optimistic user bubble.
     appendChatMessage({ role: "user", content: text });
