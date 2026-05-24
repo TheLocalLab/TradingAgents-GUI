@@ -681,6 +681,26 @@ def reports_delete():
     return jsonify({"ok": True})
 
 
+def _export_filename(resolved: Path) -> str:
+    """Build a human-friendly filename stem like ``NVDA_2026-05-19_report``.
+
+    Reports live at ``<results>/<ticker>/<date>/reports/complete_report.md``,
+    so we walk two levels up to recover the ticker and date. Falls back to
+    ``<resolved.stem>`` if the layout doesn't match (defensive).
+    """
+    try:
+        date_part   = resolved.parent.parent.name       # "<date>"
+        ticker_part = resolved.parent.parent.parent.name  # "<ticker>"
+        # Both should be non-empty, non-"reports" segments.
+        if (ticker_part and date_part
+                and ticker_part not in (".", "..", "reports")
+                and date_part   not in (".", "..", "reports")):
+            return f"{ticker_part}_{date_part}_report"
+    except (AttributeError, IndexError):
+        pass
+    return resolved.stem
+
+
 @app.route("/api/reports/export")
 def reports_export():
     """Export a report as .md / .html / .pdf."""
@@ -690,26 +710,31 @@ def reports_export():
     if not resolved:
         return jsonify({"error": "Invalid path"}), 400
     md = resolved.read_text(encoding="utf-8")
+    name = _export_filename(resolved)
     if fmt == "md":
-        return send_file(str(resolved), as_attachment=True, mimetype="text/markdown")
+        # send_file uses the on-disk filename (complete_report.md) by default.
+        # Override with ``download_name`` so the user sees TICKER_DATE_report.md.
+        return send_file(str(resolved), as_attachment=True,
+                         mimetype="text/markdown",
+                         download_name=f"{name}.md")
     if fmt == "html":
         # ``?print=1`` returns a print-friendly HTML view that auto-opens the
         # browser's Save-as-PDF dialog — the zero-install path to a PDF.
         print_mode = request.args.get("print") in ("1", "true", "yes")
-        body = _render_html(md, resolved.stem, print_mode=print_mode)
+        body = _render_html(md, name, print_mode=print_mode)
         if print_mode:
             # Render inline so the page can auto-trigger window.print().
             return Response(body, mimetype="text/html")
         return Response(body, mimetype="text/html",
                         headers={"Content-Disposition":
-                                 f'attachment; filename="{resolved.stem}.html"'})
+                                 f'attachment; filename="{name}.html"'})
     if fmt == "pdf":
         # PDF export goes through the browser's Save-as-PDF dialog. We serve
         # the print-friendly HTML view inline; a small auto-print script in
         # ``_render_html(..., print_mode=True)`` opens the dialog on load.
-        # This replaces the old WeasyPrint code path which broke on Windows
-        # whenever GTK / Pango / Cairo native libs weren't installed.
-        body = _render_html(md, resolved.stem, print_mode=True)
+        # The browser uses the page <title> as the suggested PDF filename,
+        # so we pass ``name`` (TICKER_DATE_report) into the title here too.
+        body = _render_html(md, name, print_mode=True)
         return Response(body, mimetype="text/html")
     return jsonify({"error": "Unknown format"}), 400
 

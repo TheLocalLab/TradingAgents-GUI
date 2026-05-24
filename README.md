@@ -8,6 +8,18 @@ A polished local web GUI on top of [TauricResearch/TradingAgents](https://github
 
 ![TradingAgents-GUI — Analyze tab](assets/gui-analyze.png)
 
+## Example reports
+
+Each run produces a multi-section markdown report (Market / Sentiment / News / Fundamentals → Research debate → Trade plan → Risk debate → Portfolio decision). Live samples produced by the pipeline:
+
+| Ticker | View in browser | Raw source |
+| --- | --- | --- |
+| **AAPL** | [📄 Open report](https://htmlpreview.github.io/?https://github.com/TheLocalLab/TradingAgents-GUI/blob/main/assets/examples/AAPL_report.html) | [AAPL_report.html](assets/examples/AAPL_report.html) |
+| **NVDA** | [📄 Open report](https://htmlpreview.github.io/?https://github.com/TheLocalLab/TradingAgents-GUI/blob/main/assets/examples/NVDA_report.html) | [NVDA_report.html](assets/examples/NVDA_report.html) |
+| **MRVL** | [📄 Open report](https://htmlpreview.github.io/?https://github.com/TheLocalLab/TradingAgents-GUI/blob/main/assets/examples/MRVL_report.html) | [MRVL_report.html](assets/examples/MRVL_report.html) |
+
+(GitHub displays `.html` files as raw source; the **Open report** column wraps them through `htmlpreview.github.io` so they render in-browser. You can also save the raw file and open it locally.)
+
 ---
 
 ## What you get
