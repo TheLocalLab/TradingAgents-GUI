@@ -832,7 +832,11 @@
     window.showToast?.(`Loaded ${r.ticker} into the form — click Run Analysis.`, "info");
   };
 
-  /** Export the current report in the chosen format via the export route. */
+  /** Export the current report in the chosen format via the export route.
+      ``fmt`` is one of: 'md', 'html', 'pdf'. The 'pdf' option opens the
+      report in a new tab and auto-triggers the browser's Save-as-PDF
+      dialog — the zero-install path that works on every OS. (The previous
+      server-side WeasyPrint path has been removed.) */
   window.exportReport = function (fmt) {
     const r = window._currentReport;
     if (!r) return;
@@ -896,8 +900,9 @@
   window.installMissingDeps = async function(includeOptional) {
     const btn = document.getElementById("install-missing-btn");
     const out = document.getElementById("install-missing-output");
-    const pdfChk = document.getElementById("install-include-pdf");
-    const include = includeOptional || pdfChk?.checked;
+    // (No optional checkbox right now — PDF export is now a zero-install
+    // browser-print route, so there's nothing optional left to install.)
+    const include = !!includeOptional;
     if (btn) { btn.disabled = true; btn.textContent = "Installing…"; }
     if (out) {
       out.style.display = "block";

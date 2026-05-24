@@ -199,19 +199,8 @@ def health_detailed():
         "hint": "Free up some space; reports are small but caches can grow." if not disk_ok else "",
     })
 
-    # 7. Optional: PDF export
-    try:
-        importlib.import_module("weasyprint")
-        pdf_ok = True; pdf_detail = "weasyprint installed"
-    except ImportError:
-        pdf_ok = False; pdf_detail = "weasyprint not installed (optional)"
-    checks.append({
-        "key": "pdf_export", "ok": pdf_ok,
-        "label": "PDF export (optional)",
-        "detail": pdf_detail,
-        "hint": "Run `pip install .[pdf]` to enable PDF report exports." if not pdf_ok else "",
-        "optional": True,
-    })
+    # PDF export goes through the browser's Save-as-PDF dialog — no server-
+    # side dependency to check. The old WeasyPrint health check lived here.
 
     overall = all(c["ok"] for c in checks if not c.get("optional"))
     return jsonify({
@@ -237,15 +226,16 @@ def install_missing():
          footgun the user flagged.
       4. Stream stdout/stderr back to the caller as a JSON blob.
 
-    Optional packages (e.g. weasyprint) can be requested explicitly via
-    ``{"include_optional": true}``.
+    The ``include_optional`` flag is preserved for forward-compat but
+    currently has no optional packages to install (the previous WeasyPrint
+    dependency has been replaced by the browser-print PDF route).
     """
     import importlib
     import subprocess
     import sys
 
     body = request.get_json(silent=True) or {}
-    include_optional = bool(body.get("include_optional"))
+    _ = bool(body.get("include_optional"))  # reserved for future optional deps
 
     required = [
         ("langchain_core", "langchain-core"),
@@ -256,10 +246,9 @@ def install_missing():
         ("markdown",       "markdown"),
         ("jinja2",         "jinja2"),
     ]
-    optional = [("weasyprint", "weasyprint")] if include_optional else []
 
     to_install: list[str] = []
-    for module, pkg in required + optional:
+    for module, pkg in required:
         try:
             importlib.import_module(module)
         except ImportError:
@@ -704,18 +693,24 @@ def reports_export():
     if fmt == "md":
         return send_file(str(resolved), as_attachment=True, mimetype="text/markdown")
     if fmt == "html":
-        return Response(_render_html(md, resolved.stem), mimetype="text/html",
+        # ``?print=1`` returns a print-friendly HTML view that auto-opens the
+        # browser's Save-as-PDF dialog — the zero-install path to a PDF.
+        print_mode = request.args.get("print") in ("1", "true", "yes")
+        body = _render_html(md, resolved.stem, print_mode=print_mode)
+        if print_mode:
+            # Render inline so the page can auto-trigger window.print().
+            return Response(body, mimetype="text/html")
+        return Response(body, mimetype="text/html",
                         headers={"Content-Disposition":
                                  f'attachment; filename="{resolved.stem}.html"'})
     if fmt == "pdf":
-        try:
-            from weasyprint import HTML  # type: ignore
-        except ImportError:
-            return jsonify({"error": "PDF export needs `pip install .[pdf]` (weasyprint)."}), 501
-        pdf = HTML(string=_render_html(md, resolved.stem)).write_pdf()
-        return Response(pdf, mimetype="application/pdf",
-                        headers={"Content-Disposition":
-                                 f'attachment; filename="{resolved.stem}.pdf"'})
+        # PDF export goes through the browser's Save-as-PDF dialog. We serve
+        # the print-friendly HTML view inline; a small auto-print script in
+        # ``_render_html(..., print_mode=True)`` opens the dialog on load.
+        # This replaces the old WeasyPrint code path which broke on Windows
+        # whenever GTK / Pango / Cairo native libs weren't installed.
+        body = _render_html(md, resolved.stem, print_mode=True)
+        return Response(body, mimetype="text/html")
     return jsonify({"error": "Unknown format"}), 400
 
 
@@ -734,20 +729,63 @@ def _safe_report_path(rel: str) -> Path | None:
 
 
 _HTML_TEMPLATE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>
-<style>body{{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:780px;margin:2rem auto;padding:0 1.2rem;color:#1d2330;line-height:1.55}}
-h1,h2,h3{{color:#0b1830}}pre,code{{background:#f4f6fb;padding:.15em .35em;border-radius:4px}}
-pre{{padding:.8rem;overflow:auto}}blockquote{{border-left:3px solid #4e8cff;padding-left:.8rem;color:#445}}
-table{{border-collapse:collapse}}td,th{{border:1px solid #d4d9e3;padding:.3rem .6rem}}</style>
-</head><body>{body}</body></html>"""
+<style>
+  body {{ font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+          max-width: 780px; margin: 2rem auto; padding: 0 1.2rem;
+          color: #1d2330; line-height: 1.55; }}
+  h1, h2, h3 {{ color: #0b1830; page-break-after: avoid; }}
+  h1 {{ font-size: 1.7rem; border-bottom: 2px solid #0b1830; padding-bottom: .3rem; }}
+  h2 {{ font-size: 1.3rem; margin-top: 1.6rem; }}
+  pre, code {{ background: #f4f6fb; padding: .15em .35em; border-radius: 4px;
+               font-family: 'Cascadia Code', 'Consolas', monospace; font-size: .9em; }}
+  pre {{ padding: .8rem; overflow: auto; page-break-inside: avoid; }}
+  blockquote {{ border-left: 3px solid #4e8cff; padding-left: .8rem; color: #445; }}
+  table {{ border-collapse: collapse; width: 100%; margin: .7rem 0;
+           page-break-inside: avoid; }}
+  td, th {{ border: 1px solid #d4d9e3; padding: .35rem .6rem; }}
+  th {{ background: #f4f6fb; text-align: left; }}
+  /* Print-specific rules — keep the page tidy when saved as PDF */
+  @media print {{
+    body {{ margin: 0; max-width: none; padding: 0 .4in; font-size: 11pt; }}
+    h1, h2, h3 {{ page-break-after: avoid; }}
+    table, pre, blockquote {{ page-break-inside: avoid; }}
+    .no-print {{ display: none !important; }}
+  }}
+  .print-banner {{
+    background: #4e8cff; color: white; padding: .6rem 1rem; border-radius: 6px;
+    margin-bottom: 1.2rem; font-size: .9rem;
+  }}
+  .print-banner button {{
+    background: white; color: #0b1830; border: 0; padding: .3rem .7rem;
+    border-radius: 4px; font-weight: 600; cursor: pointer; margin-left: .5rem;
+  }}
+</style>
+</head><body>{banner}{body}{script}</body></html>"""
+
+_PRINT_BANNER = """
+<div class="print-banner no-print">
+  Use your browser's print dialog to save this report as a PDF.
+  <button onclick="window.print()">Print / Save as PDF</button>
+</div>
+"""
+
+_AUTO_PRINT_SCRIPT = """
+<script>
+  // Wait a tick so layout settles before the dialog opens.
+  window.addEventListener("load", () => setTimeout(() => window.print(), 250));
+</script>
+"""
 
 
-def _render_html(md: str, title: str) -> str:
+def _render_html(md: str, title: str, *, print_mode: bool = False) -> str:
     try:
         import markdown as md_lib  # type: ignore
         body = md_lib.markdown(md, extensions=["fenced_code", "tables"])
     except ImportError:
         body = f"<pre>{md}</pre>"
-    return _HTML_TEMPLATE.format(title=title, body=body)
+    banner = _PRINT_BANNER if print_mode else ""
+    script = _AUTO_PRINT_SCRIPT if print_mode else ""
+    return _HTML_TEMPLATE.format(title=title, body=body, banner=banner, script=script)
 
 
 # ---------------------------------------------------------------------------

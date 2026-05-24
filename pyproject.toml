@@ -46,9 +46,9 @@ gui = [
     "jinja2>=3.1.0",
     "markdown>=3.6",
 ]
-pdf = [
-    "weasyprint>=62.0",
-]
+# PDF export goes through the browser's Save-as-PDF dialog (zero install,
+# works on every OS). The previous WeasyPrint extra has been removed because
+# its native GTK / Pango / Cairo dependencies were brittle on Windows.
 
 [project.scripts]
 tradingagents = "cli.main:app"

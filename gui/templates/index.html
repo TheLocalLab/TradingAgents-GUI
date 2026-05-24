@@ -564,9 +564,9 @@
             <div class="rsb-export">
               <button class="btn btn-ghost btn-sm" id="rsb-export-toggle">⬇ Export</button>
               <div class="rsb-export-menu" id="rsb-export-menu">
-                <button onclick="exportReport('md')">.md</button>
-                <button onclick="exportReport('html')">.html</button>
-                <button onclick="exportReport('pdf')">.pdf</button>
+                <button onclick="exportReport('md')" title="Raw Markdown source">.md</button>
+                <button onclick="exportReport('html')" title="Standalone HTML page">.html</button>
+                <button onclick="exportReport('pdf')" title="Opens the report in a new tab and triggers your browser's Save-as-PDF dialog">.pdf</button>
               </div>
             </div>
             <button class="btn btn-ghost btn-sm" onclick="deleteCurrentReport()" title="Delete this report">🗑</button>
@@ -756,10 +756,6 @@
                     title="Pip-install anything that's missing into this Python">
               ⬇ Install missing deps
             </button>
-            <label class="install-missing-opt">
-              <input type="checkbox" id="install-include-pdf">
-              also install PDF export (weasyprint)
-            </label>
           </div>
           <pre id="install-missing-output" class="code-block install-missing-output" style="display:none"></pre>
           <p class="form-hint" style="margin-top:.6rem">

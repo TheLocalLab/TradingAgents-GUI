@@ -22,7 +22,7 @@ Tracks upstream **TradingAgents v0.2.5**, then adds:
 | **Tabbed output area** | Live Feed, Reports preview, Tool calls — each in its own pane with proper breathing room. |
 | **Final decision card** | Color-coded (BUY / SELL / HOLD) with one-click copy. |
 | **Reports tab redesign** | 3-pane: searchable index, table of contents, reader. Re-run with one click, export `.md` / `.html` / `.pdf`, delete from the UI. |
-| **Live Health/Setup tab** | Replaces the static "instructions" tab. Diagnostics for Python version, deps, key configured, results dir writable, disk space, optional PDF support. |
+| **Live Health/Setup tab** | Replaces the static "instructions" tab. Diagnostics for Python version, deps, key configured, results dir writable, disk space. |
 | **First-run wizard** | Auto-opens when no provider key is set: pick a provider, paste a key, test it, you're done. |
 | **Chat tab** | Multi-session chat with any provider you have a key for; pin past reports as grounding context; live token-counter with context-window warning. |
 | **Theme system** | Three built-in themes: **Terminal** (default, blue neon), **Modern** (clean cyan), **Bloomberg** (black + amber/green, mono-heavy). Persists in localStorage. |
@@ -190,7 +190,7 @@ tradingagents-gui      # this fork's GUI (same as start.bat / start.sh)
 | Browser doesn't open | Manually visit `http://127.0.0.1:5000`. |
 | "No API key set" in Setup tab | Open **API Keys** tab, paste a key, click Save. The first-run wizard does this too. |
 | Run hangs at the first analyst | Almost always a bad key or network/proxy block. Use the **test** button next to your key. |
-| `PDF export needs weasyprint` | PDF is opt-in: `pip install -e ".[pdf]"` (or rerun `install.bat` after adding `[pdf]` to deps). MD and HTML always work. |
+| PDF export looks odd / has extra header | The browser's Save-as-PDF dialog is used — pick "Save as PDF" as the destination, then tweak margins/scale in the print preview if needed. (As of v0.2.5+gui.2 the WeasyPrint server-side path was removed in favor of this zero-install browser route.) |
 | Tokens or context "$0" | Pricing only published for major providers. The estimator is informational, not a billing system. |
 | Want to expose to LAN | `start.bat --host 0.0.0.0`. **Do not expose to the public internet** — no auth layer. |
 | Where are my reports? | `~/.tradingagents/logs/<ticker>/<date>/reports/complete_report.md`. The **Reports** tab is a viewer for that folder. |
