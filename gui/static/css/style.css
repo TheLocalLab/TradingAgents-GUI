@@ -1051,7 +1051,64 @@ textarea { resize: vertical; min-height: 80px; }
   font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-dim); margin-bottom: .15rem;
 }
-.decision-text { font-size: 1.1rem; font-weight: 600; color: var(--text); line-height: 1.4; }
+.decision-text {
+  font-size: .95rem;
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.55;
+  max-height: 420px;
+  overflow-y: auto;
+}
+/* Scoped markdown typography — the portfolio-manager output is now rendered
+   as markdown, so headings / lists / bold need real hierarchy instead of
+   inheriting the old "bold 1.1rem everywhere" rule. */
+.decision-text > :first-child { margin-top: 0; }
+.decision-text > :last-child  { margin-bottom: 0; }
+.decision-text h1,
+.decision-text h2,
+.decision-text h3,
+.decision-text h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: .9rem 0 .35rem;
+  color: var(--accent-bright, var(--accent));
+  letter-spacing: 0;
+  text-transform: none;
+}
+.decision-text h1 { font-size: 1.1rem; }
+.decision-text h4 { font-size: .9rem; color: var(--text); }
+.decision-text p  { margin: .35rem 0; }
+.decision-text strong { color: var(--text); font-weight: 700; }
+.decision-text em { color: var(--text2, var(--text-dim)); }
+.decision-text ul,
+.decision-text ol { margin: .4rem 0 .5rem 1.2rem; padding: 0; }
+.decision-text li { margin: .15rem 0; }
+.decision-text code {
+  background: rgba(255,255,255,0.06);
+  padding: .05em .35em; border-radius: 3px;
+  font-size: .85em;
+}
+.decision-text pre {
+  background: rgba(0,0,0,0.25); padding: .55rem .7rem;
+  border-radius: 6px; overflow-x: auto; margin: .5rem 0;
+  font-size: .82em;
+}
+.decision-text table {
+  border-collapse: collapse; width: 100%; margin: .5rem 0;
+  font-size: .85rem;
+}
+.decision-text th,
+.decision-text td {
+  border: 1px solid var(--border);
+  padding: .25rem .5rem; text-align: left;
+}
+.decision-text th { background: rgba(255,255,255,0.04); }
+.decision-text blockquote {
+  border-left: 3px solid var(--accent);
+  padding: .15rem .7rem; margin: .5rem 0;
+  color: var(--text2, var(--text-dim));
+  background: rgba(255,255,255,0.03);
+}
 
 /* ── Output tabs card ────────────────────────────────────── */
 .output-tabs-card {

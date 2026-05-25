@@ -349,7 +349,16 @@
     const body = document.getElementById("decision-text");
     if (!card || !icon || !body) return;
     const mood = decisionMood(text);
-    body.textContent = text.length > 320 ? text.slice(0, 317) + "…" : text;
+    // Stash the original markdown for copyDecision() and any other consumer.
+    body.dataset.raw = text;
+    // Render markdown — older versions showed the literal '### Heading\n**Action**'
+    // characters because we set textContent. Use marked when present, fall
+    // back to plain text so a missing CDN isn't fatal.
+    if (window.marked && typeof window.marked.parse === "function") {
+      body.innerHTML = window.marked.parse(text);
+    } else {
+      body.textContent = text;
+    }
     icon.textContent = mood.icon;
     card.style.display = "flex";
     card.style.borderColor = mood.color === "ok"
@@ -391,7 +400,11 @@
 
   // ---- Copy-decision helper exposed to inline onclick ------------------
   window.copyDecision = async function() {
-    const t = document.getElementById("decision-text")?.textContent || "";
+    const el = document.getElementById("decision-text");
+    // Prefer the stashed markdown source so the clipboard gets the
+    // headings, bullets, and bold markers intact. Fall back to rendered
+    // text for older runs that pre-date the markdown render.
+    const t = el?.dataset?.raw || el?.textContent || "";
     if (!t) return;
     try {
       await navigator.clipboard.writeText(t);
