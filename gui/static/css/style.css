@@ -2192,3 +2192,92 @@ html[data-theme="modern"] .nav-btn { border-radius: 10px; }
 .presets-bar .btn { white-space: nowrap; }
 .presets-bar .presets-del { color: var(--text-dim); }
 .presets-bar .presets-del:hover { color: var(--danger, #f87171); border-color: var(--danger, #f87171); }
+
+/* ─── Usage card (History tab) ─────────────────────────────────────── */
+.usage-card .usage-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .55rem .7rem;
+  margin: .4rem 0 1rem;
+}
+.usage-stat {
+  display: flex; flex-direction: column;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: .55rem .7rem;
+}
+.usage-stat-key { font-size: .7rem; color: var(--text2, var(--text-dim)); letter-spacing: .03em; text-transform: uppercase; }
+.usage-stat-val { font-family: var(--mono); font-size: 1.15rem; font-weight: 700; color: var(--text); }
+.usage-stat-cost { background: linear-gradient(180deg, rgba(0,221,179,0.10), transparent); border-color: var(--border2, var(--border)); }
+.usage-stat-cost .usage-stat-val { color: var(--accent2, var(--accent)); }
+
+.usage-rangerow {
+  display: flex; flex-wrap: wrap; gap: 1rem 1.6rem; margin-bottom: 1rem;
+  font-size: .85rem;
+}
+.usage-range { display: flex; flex-direction: column; gap: .15rem; }
+.usage-range-label { font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; color: var(--text2, var(--text-dim)); }
+.usage-range-vals strong { color: var(--accent2, var(--accent)); font-family: var(--mono); }
+
+.usage-chart-wrap { margin: 0 0 1rem; }
+.usage-chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .35rem; }
+.usage-chart-title { font-size: .8rem; color: var(--text2, var(--text-dim)); }
+.usage-chart-mode {
+  background: transparent; border: 1px solid var(--border); color: var(--text2, var(--text-dim));
+  font-family: var(--mono); font-size: .68rem;
+  padding: .15rem .5rem; margin-left: .25rem;
+  border-radius: 4px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.usage-chart-mode.active {
+  background: var(--accent); color: white; border-color: var(--accent);
+}
+.usage-chart {
+  display: flex; align-items: flex-end; gap: .35rem;
+  height: 110px;
+  padding: .4rem .5rem .25rem;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.usage-bar-col {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  height: 100%;
+}
+.usage-bar {
+  width: 80%; min-height: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent2, var(--accent)));
+  border-radius: 3px 3px 0 0;
+  transition: height .25s ease;
+}
+.usage-bar-label {
+  margin-top: .25rem; font-size: .65rem; color: var(--text3, var(--text2));
+  font-family: var(--mono);
+}
+
+.usage-breakdown {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: .9rem;
+}
+.usage-breakdown-col h4 {
+  font-size: .72rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--accent-bright, var(--accent));
+  margin: 0 0 .4rem;
+}
+.usage-breakdown-list { list-style: none; margin: 0; padding: 0; }
+.usage-breakdown-list li {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: .5rem; padding: .25rem 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: .82rem;
+}
+.usage-breakdown-list li:last-child { border-bottom: 0; }
+.usage-breakdown-list li.muted { color: var(--text-dim); border-bottom: 0; }
+.usage-breakdown-list .bd-key { font-family: var(--mono); color: var(--text); word-break: break-all; }
+.usage-breakdown-list .bd-val { font-family: var(--mono); color: var(--text2, var(--text-dim)); font-size: .76rem; white-space: nowrap; }
+.bd-tone-ok   { color: var(--success, #34d399) !important; }
+.bd-tone-warn { color: var(--warn,    #f59e0b) !important; }
+.bd-tone-err  { color: var(--danger,  #f87171) !important; }
+.bd-tone-mute { color: var(--text-dim) !important; }

@@ -691,10 +691,85 @@
   <!-- ─── TAB: HISTORY ─── -->
   <section class="tab-panel" id="tab-history">
     <div class="panel-header">
-      <h1>Decision History</h1>
-      <p class="panel-sub">Persistent memory log — agents learn from past decisions</p>
+      <h1>Decision History &amp; Usage</h1>
+      <p class="panel-sub">Aggregate stats over every saved run, plus the persistent memory log.</p>
     </div>
-    <div class="card" style="height:calc(100vh - 220px)">
+
+    <!-- Usage summary -->
+    <div class="card usage-card">
+      <div class="card-title-row">
+        <h2 class="card-title">Lifetime usage</h2>
+        <button class="btn btn-ghost btn-sm" onclick="loadUsageStats()">🔄 Refresh</button>
+      </div>
+
+      <div class="usage-top" id="usage-top">
+        <div class="usage-stat"><span class="usage-stat-key">Runs</span><span class="usage-stat-val" id="usage-runs">—</span></div>
+        <div class="usage-stat"><span class="usage-stat-key">LLM calls</span><span class="usage-stat-val" id="usage-llm">—</span></div>
+        <div class="usage-stat"><span class="usage-stat-key">Tool calls</span><span class="usage-stat-val" id="usage-tools">—</span></div>
+        <div class="usage-stat"><span class="usage-stat-key">Tokens (in / out)</span><span class="usage-stat-val" id="usage-tokens">—</span></div>
+        <div class="usage-stat"><span class="usage-stat-key">Total tokens</span><span class="usage-stat-val" id="usage-total-tokens">—</span></div>
+        <div class="usage-stat usage-stat-cost"><span class="usage-stat-key">Estimated cost</span><span class="usage-stat-val" id="usage-cost">—</span></div>
+        <div class="usage-stat"><span class="usage-stat-key">Total runtime</span><span class="usage-stat-val" id="usage-elapsed">—</span></div>
+      </div>
+
+      <div class="usage-rangerow">
+        <div class="usage-range">
+          <span class="usage-range-label">This month</span>
+          <span class="usage-range-vals">
+            <strong id="usage-this-month-cost">—</strong> ·
+            <span id="usage-this-month-runs">—</span> runs ·
+            <span id="usage-this-month-tokens">—</span> tokens
+          </span>
+        </div>
+        <div class="usage-range">
+          <span class="usage-range-label">Last 30 days</span>
+          <span class="usage-range-vals">
+            <strong id="usage-30d-cost">—</strong> ·
+            <span id="usage-30d-runs">—</span> runs ·
+            <span id="usage-30d-tokens">—</span> tokens
+          </span>
+        </div>
+      </div>
+
+      <!-- Monthly bar chart (CSS only — height = % of max) -->
+      <div class="usage-chart-wrap">
+        <div class="usage-chart-head">
+          <span class="usage-chart-title">Tokens by month (last 12)</span>
+          <span class="usage-chart-toggle">
+            <button class="usage-chart-mode active" data-mode="tokens" onclick="setUsageChartMode('tokens')">Tokens</button>
+            <button class="usage-chart-mode"        data-mode="cost"   onclick="setUsageChartMode('cost')">Cost</button>
+            <button class="usage-chart-mode"        data-mode="runs"   onclick="setUsageChartMode('runs')">Runs</button>
+          </span>
+        </div>
+        <div class="usage-chart" id="usage-chart"></div>
+      </div>
+
+      <!-- Top breakdowns -->
+      <div class="usage-breakdown">
+        <div class="usage-breakdown-col">
+          <h4>Top providers (by cost)</h4>
+          <ul class="usage-breakdown-list" id="usage-top-providers"><li class="muted">—</li></ul>
+        </div>
+        <div class="usage-breakdown-col">
+          <h4>Top models (by tokens)</h4>
+          <ul class="usage-breakdown-list" id="usage-top-models"><li class="muted">—</li></ul>
+        </div>
+        <div class="usage-breakdown-col">
+          <h4>Top tickers (by run count)</h4>
+          <ul class="usage-breakdown-list" id="usage-top-tickers"><li class="muted">—</li></ul>
+        </div>
+        <div class="usage-breakdown-col">
+          <h4>Decision split</h4>
+          <ul class="usage-breakdown-list" id="usage-decisions"><li class="muted">—</li></ul>
+        </div>
+      </div>
+      <p class="form-hint" style="margin-top:.4rem">
+        Costs are heuristics from the local pricing table — confirm against your provider's dashboard for exact billing.
+      </p>
+    </div>
+
+    <!-- Persistent memory log (unchanged) -->
+    <div class="card" style="margin-top:1rem; height:calc(100vh - 720px); min-height:280px;">
       <div class="card-title-row">
         <h2 class="card-title">trading_memory.md</h2>
         <button class="btn btn-ghost btn-sm" onclick="loadHistory()">🔄 Refresh</button>

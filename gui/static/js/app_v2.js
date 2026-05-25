@@ -1893,6 +1893,8 @@
   // ── Memory-log markdown rendering ──────────────────────────────────
   const origLoadHistory = window.loadHistory;
   window.loadHistory = async function () {
+    // Re-fetch the usage card whenever the History tab loads.
+    loadUsageStats();
     try {
       const res = await fetch("/api/history");
       const data = await res.json();
@@ -1908,6 +1910,131 @@
       // Fall back to whatever the original did.
       if (typeof origLoadHistory === "function") origLoadHistory();
     }
+  };
+
+  // ── Usage stats card (lifetime aggregation) ─────────────────────────
+  let _usageData = null;
+  let _usageChartMode = "tokens";
+
+  function _fmtNum(n) {
+    if (n == null) return "—";
+    n = Number(n);
+    if (!isFinite(n)) return "—";
+    if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + "B";
+    if (n >= 1_000_000)     return (n / 1_000_000).toFixed(2) + "M";
+    if (n >= 1_000)         return (n / 1_000).toFixed(1) + "k";
+    return String(Math.round(n));
+  }
+  function _fmtCost(n) {
+    if (n == null || !isFinite(Number(n))) return "—";
+    return "$" + Number(n).toFixed(2);
+  }
+  function _fmtElapsed(s) {
+    if (s == null) return "—";
+    s = Math.round(Number(s) || 0);
+    if (s < 60)    return s + "s";
+    if (s < 3600)  return Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
+    if (s < 86400) return Math.floor(s / 3600) + "h " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + "m";
+    return (s / 86400).toFixed(1) + "d";
+  }
+
+  window.loadUsageStats = async function () {
+    try {
+      const res = await fetch("/api/runs/stats");
+      _usageData = await res.json();
+    } catch {
+      _usageData = null;
+    }
+    renderUsageStats();
+  };
+
+  function renderUsageStats() {
+    const d = _usageData;
+    if (!d) return;
+    const L = d.lifetime || {};
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+    setText("usage-runs",  _fmtNum(L.run_count));
+    setText("usage-llm",   _fmtNum(L.llm_calls));
+    setText("usage-tools", _fmtNum(L.tool_calls));
+    setText("usage-tokens", `${_fmtNum(L.tokens_in)} / ${_fmtNum(L.tokens_out)}`);
+    setText("usage-total-tokens", _fmtNum(L.tokens_total));
+    setText("usage-cost", _fmtCost(L.cost_usd));
+    setText("usage-elapsed", _fmtElapsed(L.elapsed_s));
+
+    const T = d.this_month || {};
+    setText("usage-this-month-cost",   _fmtCost(T.cost_usd));
+    setText("usage-this-month-runs",   _fmtNum(T.run_count));
+    setText("usage-this-month-tokens", _fmtNum(T.tokens_total));
+
+    const R = d.last_30d || {};
+    setText("usage-30d-cost",   _fmtCost(R.cost_usd));
+    setText("usage-30d-runs",   _fmtNum(R.run_count));
+    setText("usage-30d-tokens", _fmtNum(R.tokens_total));
+
+    _renderUsageChart();
+    _renderBreakdown("usage-top-providers", d.top_providers || [],
+                     p => `<span class="bd-key">${escapeHtml(p.name)}</span><span class="bd-val">${_fmtCost(p.cost_usd)} · ${_fmtNum(p.run_count)} runs</span>`);
+    _renderBreakdown("usage-top-models",    d.top_models    || [],
+                     p => `<span class="bd-key">${escapeHtml(p.name)}</span><span class="bd-val">${_fmtNum(p.tokens_total)} tok · ${_fmtCost(p.cost_usd)}</span>`);
+    _renderBreakdown("usage-top-tickers",   d.top_tickers   || [],
+                     p => `<span class="bd-key">${escapeHtml(p.name)}</span><span class="bd-val">${_fmtNum(p.run_count)} runs · ${_fmtCost(p.cost_usd)}</span>`);
+
+    // Decision split as a small inline breakdown.
+    const dec = d.decisions || {};
+    const total = (dec.BUY||0) + (dec.SELL||0) + (dec.HOLD||0) + (dec.other||0);
+    const decRows = [["BUY","ok"], ["HOLD","warn"], ["SELL","err"], ["other","mute"]].map(([k, tone]) => {
+      const n = dec[k] || 0;
+      const pct = total ? Math.round(100 * n / total) : 0;
+      return `<li><span class="bd-key bd-tone-${tone}">${k}</span><span class="bd-val">${n} · ${pct}%</span></li>`;
+    }).join("");
+    const decEl = document.getElementById("usage-decisions");
+    if (decEl) decEl.innerHTML = decRows || `<li class="muted">No completed runs yet.</li>`;
+  }
+
+  function _renderBreakdown(id, rows, fmt) {
+    const ul = document.getElementById(id);
+    if (!ul) return;
+    if (!rows.length) {
+      ul.innerHTML = `<li class="muted">No data yet.</li>`;
+      return;
+    }
+    ul.innerHTML = rows.map(r => `<li>${fmt(r)}</li>`).join("");
+  }
+
+  function _renderUsageChart() {
+    const wrap = document.getElementById("usage-chart");
+    if (!wrap || !_usageData?.monthly) return;
+    const series = _usageData.monthly.map(m => {
+      const v = _usageChartMode === "cost"  ? m.cost_usd
+              : _usageChartMode === "runs"  ? m.run_count
+                                            : m.tokens_total;
+      return { month: m.month, value: Number(v) || 0 };
+    });
+    const max = Math.max(1, ...series.map(s => s.value));
+    const unit = _usageChartMode === "cost"  ? "cost"
+               : _usageChartMode === "runs"  ? "runs"
+                                             : "tokens";
+    wrap.innerHTML = series.map(s => {
+      const h = Math.max(2, Math.round(100 * s.value / max));
+      const label = s.month.slice(5); // "MM"
+      const tip = _usageChartMode === "cost" ? _fmtCost(s.value)
+                : _usageChartMode === "runs" ? String(s.value)
+                                             : _fmtNum(s.value);
+      return `
+        <div class="usage-bar-col" title="${s.month}: ${tip} ${unit}">
+          <div class="usage-bar" style="height:${h}%"></div>
+          <div class="usage-bar-label">${label}</div>
+        </div>`;
+    }).join("");
+  }
+
+  window.setUsageChartMode = function (mode) {
+    _usageChartMode = mode;
+    document.querySelectorAll(".usage-chart-mode").forEach(b => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+    _renderUsageChart();
   };
 
   // ── Wire keyboard shortcut + tab activation ────────────────

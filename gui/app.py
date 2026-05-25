@@ -548,6 +548,120 @@ def runs_get(run_id: str):
     return jsonify(run.snapshot())
 
 
+@app.route("/api/runs/stats")
+def runs_stats():
+    """Aggregate stats across every run in history.
+
+    Computed from ``runs.list()`` on demand — no separate counter to
+    keep in sync. The data is already authoritative because RunManager
+    persists every run's stats to ``~/.tradingagents/runs.json`` on each
+    state change.
+
+    Returns:
+      lifetime:    totals over every run
+      last_30d:    same shape, but only runs finished in the last 30 days
+      this_month:  totals for current calendar month (server time)
+      monthly:     time series for the last 12 months
+                   ({"month": "2026-05", "runs": int, "tokens": int, "cost_usd": float})
+      top_providers / top_models / top_tickers: top-5 by cost / tokens / count
+    """
+    import collections
+    from datetime import datetime as _dt, timedelta as _td
+
+    completed = [r for r in runs.list()
+                 if r.status in ("completed", "stopped", "error")]
+    now = _dt.utcnow()
+    cutoff_30d = (now - _td(days=30)).timestamp()
+    this_month_key = now.strftime("%Y-%m")
+
+    def _zero():
+        return {
+            "run_count":  0, "llm_calls": 0, "tool_calls": 0,
+            "tokens_in":  0, "tokens_out": 0, "tokens_total": 0,
+            "cost_usd":   0.0, "elapsed_s": 0.0,
+        }
+
+    def _add(into: dict, r) -> None:
+        s = r.stats or {}
+        into["run_count"]    += 1
+        into["llm_calls"]    += int(s.get("llm_calls") or 0)
+        into["tool_calls"]   += int(s.get("tool_calls") or 0)
+        t_in  = int(s.get("tokens_in")  or 0)
+        t_out = int(s.get("tokens_out") or 0)
+        into["tokens_in"]    += t_in
+        into["tokens_out"]   += t_out
+        into["tokens_total"] += t_in + t_out
+        into["cost_usd"]     += float(s.get("cost_usd") or 0)
+        into["elapsed_s"]    += float(s.get("elapsed_s") or 0)
+
+    lifetime   = _zero()
+    last_30d   = _zero()
+    this_month = _zero()
+    by_provider = collections.defaultdict(_zero)
+    by_model    = collections.defaultdict(_zero)
+    by_ticker   = collections.defaultdict(_zero)
+    by_month    = collections.defaultdict(_zero)
+    by_decision = collections.Counter()
+
+    for r in completed:
+        _add(lifetime, r)
+        if r.ended_at and r.ended_at >= cutoff_30d:
+            _add(last_30d, r)
+        # Month key from ``ended_at`` (fallback to started_at).
+        ts = r.ended_at or r.started_at or 0
+        if ts:
+            month_key = _dt.utcfromtimestamp(ts).strftime("%Y-%m")
+            _add(by_month[month_key], r)
+            if month_key == this_month_key:
+                _add(this_month, r)
+        # Group totals.
+        params   = getattr(r, "params", None) or {}
+        provider = params.get("provider")    or "—"
+        deep_m   = params.get("deep_model")  or params.get("quick_model") or "—"
+        ticker   = (r.ticker or "—").upper()
+        _add(by_provider[provider], r)
+        _add(by_model[deep_m],      r)
+        _add(by_ticker[ticker],     r)
+        decision = (r.decision or "").upper()
+        for label in ("BUY", "SELL", "HOLD"):
+            if label in decision:
+                by_decision[label] += 1
+                break
+        else:
+            by_decision["other"] += 1
+
+    def _round_cost(d: dict) -> dict:
+        d = dict(d)
+        d["cost_usd"]  = round(d.get("cost_usd", 0.0), 4)
+        d["elapsed_s"] = round(d.get("elapsed_s", 0.0), 1)
+        return d
+
+    def _top(mapping: dict, n: int = 5, sort_by: str = "cost_usd") -> list[dict]:
+        items = sorted(mapping.items(),
+                       key=lambda kv: (kv[1].get(sort_by) or 0),
+                       reverse=True)[:n]
+        return [{"name": k, **_round_cost(v)} for k, v in items]
+
+    # Build a contiguous 12-month series so the UI can draw a flat zero
+    # for empty months rather than gaps.
+    monthly = []
+    for i in range(11, -1, -1):
+        m = (now.replace(day=1) - _td(days=30 * i))
+        key = m.strftime("%Y-%m")
+        monthly.append({"month": key, **_round_cost(by_month.get(key, _zero()))})
+
+    return jsonify({
+        "lifetime":      _round_cost(lifetime),
+        "last_30d":      _round_cost(last_30d),
+        "this_month":    _round_cost(this_month),
+        "monthly":       monthly,
+        "top_providers": _top(by_provider, sort_by="cost_usd"),
+        "top_models":    _top(by_model,    sort_by="tokens_total"),
+        "top_tickers":   _top(by_ticker,   sort_by="run_count"),
+        "decisions":     dict(by_decision),
+    })
+
+
 @app.route("/api/stream")
 def stream_events():
     """SSE — drains the current (or specified) run's event queue."""
