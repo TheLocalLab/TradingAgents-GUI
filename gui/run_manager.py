@@ -671,6 +671,10 @@ def _persist_reports(run: Run, save_path: Path,
             (save_path / "5_portfolio" / "risk_decision.md").write_text(
                 risk_state["judge_decision"], encoding="utf-8")
 
+    # Run statistics footer — appended to the master report so the saved
+    # MD / HTML / PDF exports all show what the run cost.
+    parts.append(_format_run_stats_footer(run))
+
     # Combined master file
     (save_path / "complete_report.md").write_text("\n".join(parts), encoding="utf-8")
 
@@ -684,3 +688,71 @@ def _persist_reports(run: Run, save_path: Path,
         "saved_at": time.time(),
     }
     (save_path / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Friendly elapsed-time string: 312.5 -> '5m 13s', 45 -> '45s'."""
+    s = int(round(seconds or 0))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60:02d}s"
+    return f"{s // 3600}h {(s % 3600) // 60:02d}m"
+
+
+def _fmt_int(n) -> str:
+    """Thousands-separated int, tolerant of None/strings."""
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError):
+        return "0"
+
+
+def _format_run_stats_footer(run: Run) -> str:
+    """Return a markdown table summarising the run's resource usage.
+
+    Appended to ``complete_report.md`` so the saved report (and every
+    exported MD/HTML/PDF) carries its own provenance — anyone reading the
+    report later can see what model was used, how many tokens it cost,
+    and how long it took. Avoids guessing later or hunting through logs.
+    """
+    s = run.stats or {}
+    p = run.params or {}
+    provider     = p.get("provider")    or "—"
+    quick_model  = p.get("quick_model") or "—"
+    deep_model   = p.get("deep_model")  or quick_model
+    depth        = p.get("research_depth") or "—"
+    brevity      = p.get("report_brevity") or "standard"
+    total_tokens = (s.get("tokens_in") or 0) + (s.get("tokens_out") or 0)
+    finished_at  = datetime.datetime.fromtimestamp(
+        run.ended_at if run.ended_at else time.time()
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    completed_agents = sum(1 for v in (run.roster or {}).values() if v == "completed")
+    total_agents     = len(run.roster or {})
+    return (
+        "\n---\n\n"
+        "## Run statistics\n\n"
+        "_Resources consumed by this analysis. Useful for reproducing the run "
+        "or comparing depth / model trade-offs._\n\n"
+        "| Metric | Value |\n"
+        "| --- | --- |\n"
+        f"| Status | **{run.status or '—'}** |\n"
+        f"| Decision | **{run.decision or '—'}** |\n"
+        f"| Finished at | {finished_at} |\n"
+        f"| Elapsed | {_fmt_duration(s.get('elapsed_s') or 0)} |\n"
+        f"| Provider | `{provider}` |\n"
+        f"| Quick-think model | `{quick_model}` |\n"
+        f"| Deep-think model | `{deep_model}` |\n"
+        f"| Depth | {depth} debate / risk round(s) |\n"
+        f"| Report length | {brevity} |\n"
+        f"| Agents completed | {completed_agents} / {total_agents} |\n"
+        f"| LLM calls | {_fmt_int(s.get('llm_calls'))} |\n"
+        f"| Tool calls | {_fmt_int(s.get('tool_calls'))} |\n"
+        f"| Tokens in | {_fmt_int(s.get('tokens_in'))} |\n"
+        f"| Tokens out | {_fmt_int(s.get('tokens_out'))} |\n"
+        f"| Tokens total | **{_fmt_int(total_tokens)}** |\n"
+        f"| Estimated cost (USD) | **${s.get('cost_usd') or 0:.4f}** |\n"
+        "\n"
+        "_Cost is a heuristic from the local pricing table — confirm against "
+        "your provider's billing dashboard for exact numbers._\n"
+    )
