@@ -108,10 +108,22 @@ class Run:
 # ---------------------------------------------------------------------------
 
 
-class RunManager:
-    """Tracks active and recent runs in-process."""
+_DEFAULT_RUNS_PATH = Path.home() / ".tradingagents" / "runs.json"
 
-    def __init__(self, max_recent: int = 25):
+
+class RunManager:
+    """Tracks active and recent runs.
+
+    Run metadata (status, ticker, date, decision, stats) is persisted to a
+    JSON file under ``~/.tradingagents/runs.json`` so the history survives
+    server restarts. The persisted entries are a small subset of ``Run`` —
+    not the live queue / threading.Event, which are obviously not
+    serializable. On startup we load the file and skip anything that was
+    in-flight (those threads are gone; we mark them ``error``).
+    """
+
+    def __init__(self, max_recent: int = 25,
+                 persist_path: Path | None = None):
         self.runs: dict[str, Run] = {}
         self.order: list[str] = []
         self.max_recent = max_recent
@@ -119,6 +131,8 @@ class RunManager:
         # Most recent run id — the SSE stream falls back to this when the
         # client doesn't specify a run.
         self.current_id: str | None = None
+        self._persist_path = persist_path or _DEFAULT_RUNS_PATH
+        self._load_persisted()
 
     def get(self, run_id: str | None) -> Run | None:
         if not run_id:
@@ -148,9 +162,14 @@ class RunManager:
                     break
 
         run.thread = threading.Thread(
-            target=_worker, args=(run,), name=f"run-{run.id}", daemon=True,
+            target=_worker, args=(run, self.persist),
+            name=f"run-{run.id}", daemon=True,
         )
         run.thread.start()
+        # Persist immediately so a crash during the run still leaves a
+        # 'queued' record visible after restart (which will be flipped to
+        # 'error' on next load).
+        self.persist()
         return run
 
     def stop(self, run_id: str | None = None) -> bool:
@@ -160,14 +179,120 @@ class RunManager:
         run.stop()
         return True
 
+    # --------------------------------------------------------------- persistence
+
+    def persist(self) -> None:
+        """Write the current run list to disk. Best-effort — failures are
+        logged but never raise into the agent loop or HTTP handlers."""
+        snapshot = {
+            "version": 1,
+            "current_id": self.current_id,
+            "order": self.order,
+            "runs": {rid: _run_to_dict(r) for rid, r in self.runs.items()},
+        }
+        try:
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            import os
+            import tempfile
+            fd, tmp = tempfile.mkstemp(prefix=".runs-", suffix=".tmp",
+                                       dir=str(self._persist_path.parent))
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, self._persist_path)
+            except Exception:
+                try: os.unlink(tmp)
+                except OSError: pass
+                raise
+        except Exception:
+            logger.exception("RunManager.persist failed")
+
+    def _load_persisted(self) -> None:
+        """Restore runs from disk. ``running``/``queued`` states from a
+        previous server lifetime become ``error`` (those threads are gone)."""
+        if not self._persist_path.exists():
+            return
+        try:
+            with self._persist_path.open("r", encoding="utf-8") as f:
+                snapshot = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return
+        order = snapshot.get("order") or []
+        runs  = snapshot.get("runs")  or {}
+        for rid in order:
+            data = runs.get(rid)
+            if not data:
+                continue
+            run = _run_from_dict(data)
+            if run is not None:
+                self.runs[rid] = run
+                self.order.append(rid)
+        # current_id is informational — clear it so a fresh SSE client doesn't
+        # try to subscribe to a non-running run.
+        self.current_id = None
+
+
+# ---------------------------------------------------------------------------
+# Snapshot helpers — Run <-> JSON
+# ---------------------------------------------------------------------------
+
+
+_SERIALIZABLE_RUN_FIELDS = (
+    "id", "ticker", "date", "selected", "status",
+    "started_at", "ended_at", "error", "decision",
+    "roster", "reports", "stats", "params",
+)
+
+
+def _run_to_dict(run: Run) -> dict:
+    """Pluck only the JSON-safe bits off ``Run`` for on-disk persistence."""
+    return {k: getattr(run, k, None) for k in _SERIALIZABLE_RUN_FIELDS}
+
+
+def _run_from_dict(data: dict) -> Run | None:
+    """Reconstruct a Run from its on-disk dict. Returns ``None`` if the dict
+    is malformed. In-flight states (``running``/``queued``) are rewritten to
+    ``error`` since the worker thread is obviously gone."""
+    try:
+        params = data.get("params") or {}
+        run = Run(params)
+        run.id      = data.get("id", run.id)
+        run.ticker  = data.get("ticker", run.ticker)
+        run.date    = data.get("date",   run.date)
+        run.selected = list(data.get("selected") or [])
+        # Restore final fields first, then apply the "running -> error" flip
+        # so the synthetic error message isn't overwritten by the disk value
+        # (which would be None for a run that was still in flight).
+        run.started_at = float(data.get("started_at") or time.time())
+        run.ended_at   = data.get("ended_at")
+        run.error      = data.get("error")
+        run.decision   = data.get("decision")
+        run.status     = data.get("status", "error")
+        if run.status in ("running", "queued"):
+            run.status = "error"
+            run.error  = run.error or "Run did not complete (server restart)."
+            run.ended_at = run.ended_at or time.time()
+        run.roster     = dict(data.get("roster") or {})
+        run.reports    = dict(data.get("reports") or {})
+        run.stats.update(data.get("stats") or {})
+        return run
+    except Exception:
+        logger.exception("RunManager: failed to rehydrate run from %r", data)
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Worker
 # ---------------------------------------------------------------------------
 
 
-def _worker(run: Run) -> None:
-    """Execute the trading graph for a single Run, emitting events to its queue."""
+def _worker(run: Run, persist_cb=None) -> None:
+    """Execute the trading graph for a single Run, emitting events to its queue.
+
+    ``persist_cb`` is called whenever ``run.status`` changes to a terminal
+    state (completed / stopped / error) so the on-disk run-history JSON
+    stays in sync without each call site having to remember.
+    """
     try:
         run.status = "running"
         run.emit({"type": "status", "message": f"🚀 Starting analysis: {run.ticker} on {run.date}"})
@@ -283,6 +408,13 @@ def _worker(run: Run) -> None:
         run.emit({"type": "stats", "stats": dict(run.stats)})
         run.emit({"type": "done", "stopped": run.status == "stopped",
                   "status": run.status, "error": run.error})
+        # Persist on completion so the run survives a restart with final
+        # stats, decision, and any error message intact.
+        if persist_cb is not None:
+            try:
+                persist_cb()
+            except Exception:
+                logger.exception("RunManager persist hook failed at run end")
 
 
 # ---------------------------------------------------------------------------

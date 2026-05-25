@@ -14,6 +14,61 @@
    ============================================================ */
 
 (() => {
+  // ---- Server-mirrored UI preferences ----------------------------------
+  // Keys we sync between localStorage and the server's ``ui_state.json``.
+  // localStorage gives us instant paint on page load; the server is the
+  // source of truth so values survive incognito tabs and other browsers.
+  const _UI_MIRROR_KEYS = [
+    "ta_theme",
+    "ta_form_state",
+    "reports_toc_collapsed",
+    "chat_sessions_collapsed",
+    "wizard_seen",
+  ];
+
+  /** Pull every mirrored key from the server and push into localStorage.
+      Called synchronously at the very top of init so existing
+      ``localStorage.getItem(...)`` call sites just work in incognito. */
+  async function _bootstrapMirroredPrefs() {
+    let serverState = {};
+    try {
+      const r = await fetch("/api/ui_state");
+      serverState = (await r.json()) || {};
+    } catch { return; }
+    for (const k of _UI_MIRROR_KEYS) {
+      const v = serverState[k];
+      if (v === undefined || v === null) continue;
+      try {
+        // The server stores strings already (we POSTed them as strings),
+        // so just write through. If it ever stores a non-string we'll
+        // JSON-encode defensively.
+        const out = typeof v === "string" ? v : JSON.stringify(v);
+        localStorage.setItem(k, out);
+      } catch { /* localStorage may be full or blocked — ignore */ }
+    }
+  }
+
+  /** Write-through helper: writes to localStorage AND debounced-POSTs to
+      ``/api/ui_state`` so the value survives both a server restart and
+      switching to an incognito window. */
+  const _mirrorDebounce = {};
+  window.uiPrefSet = function(key, value) {
+    try { localStorage.setItem(key, value); } catch {}
+    clearTimeout(_mirrorDebounce[key]);
+    _mirrorDebounce[key] = setTimeout(() => {
+      const payload = { [key]: value };
+      fetch("/api/ui_state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    }, 300);
+  };
+
+  // Kick off the bootstrap before init runs. Existing localStorage reads
+  // throughout app.js / app_v2.js will see the server-loaded values.
+  const _bootstrapPromise = _bootstrapMirroredPrefs();
+
   // ---- Stage mapping ----------------------------------------------------
   // Which agent display names belong to which pipeline stage. Keep in sync
   // with the HTML data-stage attributes on the .stage elements.
@@ -474,7 +529,9 @@
   function _scheduleFormSave() {
     clearTimeout(_persistDebounce);
     _persistDebounce = setTimeout(() => {
-      try { localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(snapshotForm())); }
+      // Mirror to both localStorage (instant restore on next paint) and the
+      // server (survives incognito + a different browser).
+      try { window.uiPrefSet(FORM_STORAGE_KEY, JSON.stringify(snapshotForm())); }
       catch {}
     }, 250);
   }
@@ -623,7 +680,7 @@
       document.querySelectorAll(".theme-dot").forEach(d => {
         d.classList.toggle("active", d.dataset.theme === name);
       });
-      try { localStorage.setItem("ta_theme", name); } catch {}
+      try { window.uiPrefSet("ta_theme", name); } catch {}
     };
     const savedTheme = (() => { try { return localStorage.getItem("ta_theme"); } catch { return null; } })();
     applyTheme(savedTheme || "terminal");
@@ -704,12 +761,12 @@
     if (r) openReport(r);
   };
 
-  /** Toggle the TOC sidebar visibility. Persisted to localStorage. */
+  /** Toggle the TOC sidebar visibility. Persisted to localStorage + server. */
   window.toggleReportToc = function() {
     const layout = document.getElementById("reports-layout");
     if (!layout) return;
     const collapsed = layout.classList.toggle("toc-collapsed");
-    try { localStorage.setItem("reports_toc_collapsed", collapsed ? "1" : "0"); } catch {}
+    try { window.uiPrefSet("reports_toc_collapsed", collapsed ? "1" : "0"); } catch {}
   };
   // Restore TOC state on boot.
   try {
@@ -1016,7 +1073,7 @@
   }
   window.closeWizard = function (skipping = false) {
     document.getElementById("wizard-overlay").style.display = "none";
-    localStorage.setItem("wizard_seen", "1");
+    try { window.uiPrefSet("wizard_seen", "1"); } catch {}
     if (skipping) window.showToast?.("Wizard skipped. You can add keys any time from the API Keys tab.", "info");
   };
   function updateWizardSteps() {
@@ -1285,7 +1342,7 @@
     if (!layout) return;
     const collapsed = layout.classList.toggle("sessions-collapsed");
     if (expand) expand.style.display = collapsed ? "" : "none";
-    try { localStorage.setItem("chat_sessions_collapsed", collapsed ? "1" : "0"); } catch {}
+    try { window.uiPrefSet("chat_sessions_collapsed", collapsed ? "1" : "0"); } catch {}
   };
   try {
     if (localStorage.getItem("chat_sessions_collapsed") === "1") {
@@ -1890,9 +1947,19 @@
     initPresetsUI();
   };
 
+  // Wait for the server-state bootstrap to land before running init so the
+  // original ``localStorage.getItem()`` call sites see the server-loaded
+  // values on the very first paint (matters in incognito / fresh browsers).
+  // A 1500ms cap means a slow server doesn't block the UI forever — we'll
+  // still fall back to whatever localStorage has (or defaults).
+  function _runInitAfterBootstrap() {
+    const timeout = new Promise(r => setTimeout(r, 1500));
+    Promise.race([_bootstrapPromise, timeout]).then(() => init());
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", _runInitAfterBootstrap);
   } else {
-    init();
+    _runInitAfterBootstrap();
   }
 })();
