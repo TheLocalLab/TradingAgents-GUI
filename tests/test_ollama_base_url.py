@@ -165,3 +165,21 @@ def test_ollama_offers_custom_model_id():
         assert "custom" in values, f"Ollama {mode!r} missing 'custom' option: {entries}"
         # Custom option is last so it doesn't push the curated defaults off-screen
         assert values[-1] == "custom", f"'custom' should be last entry: {values}"
+
+
+# ---- normalisation: both URL conventions must resolve to /v1 --------------
+# The GUI stores OLLAMA_BASE_URL as the bare server root (it appends
+# /api/tags itself); the core expects a full OpenAI-compat base. The
+# resolver now accepts both.
+
+@pytest.mark.parametrize("env_value,expected", [
+    ("https://ollama.example.com",     "https://ollama.example.com/v1"),
+    ("https://ollama.example.com/",    "https://ollama.example.com/v1"),
+    ("https://ollama.example.com/v1",  "https://ollama.example.com/v1"),
+    ("https://ollama.example.com/v1/", "https://ollama.example.com/v1"),
+    ("http://localhost:11434",         "http://localhost:11434/v1"),
+])
+def test_resolver_normalises_missing_v1(monkeypatch, env_value, expected):
+    monkeypatch.setenv("OLLAMA_BASE_URL", env_value)
+    mod = _reload_client()
+    assert mod._resolve_provider_base_url("ollama") == expected

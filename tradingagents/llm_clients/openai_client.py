@@ -415,6 +415,15 @@ def _resolve_provider_base_url(provider: str) -> Optional[str]:
     if provider == "ollama":
         env_url = os.environ.get("OLLAMA_BASE_URL")
         if env_url:
+            # Two conventions coexist for this variable: the core expects a
+            # full OpenAI-compat base (".../v1"), the GUI stores the bare
+            # server root (it appends /api/tags itself). Ollama's OpenAI
+            # surface always lives under /v1, so normalise here and accept
+            # both — without this, chat/no-explicit-base callers POST to
+            # {root}/chat/completions and get Ollama's "404 page not found".
+            env_url = env_url.rstrip("/")
+            if not env_url.endswith("/v1"):
+                env_url += "/v1"
             return env_url
     return _PROVIDER_BASE_URL.get(provider)
 
