@@ -334,9 +334,21 @@ def _worker(run: Run, persist_cb=None) -> None:
         risk_state:   dict = {}
         final_state:  dict = {}
 
+        # Memory-log parity with CLI propagate(): resolve pending outcomes
+        # for this ticker, then inject past context so agents see prior
+        # decisions. Failures here must never block the run.
+        past_context = ""
+        try:
+            if hasattr(graph, "_resolve_pending_entries"):
+                graph._resolve_pending_entries(run.ticker)
+            past_context = graph.memory_log.get_past_context(run.ticker) or ""
+        except Exception:
+            logger.exception("memory-log context load failed (continuing)")
+
         init_state = {
             "trade_date":              run.date,
             "company_of_interest":     run.ticker,
+            "past_context":            past_context,
             "investment_debate_state": {"bull_history": "", "bear_history": "",
                                         "judge_decision": "", "count": 0},
             "risk_debate_state":       {"aggressive_history": "", "conservative_history": "",
@@ -386,6 +398,18 @@ def _worker(run: Run, persist_cb=None) -> None:
             _pm_text = (risk_state.get("judge_decision")
                         or run.reports.get("final_trade_decision") or "")
             run.decision = parse_rating(_pm_text) if _pm_text.strip() else None
+
+            # CLI-parity memory write: propagate() stores the decision for
+            # deferred reflection; GUI streaming bypassed it, so the History
+            # tab's trading_memory.md was never created.
+            if _pm_text.strip():
+                try:
+                    graph.memory_log.store_decision(
+                        ticker=run.ticker, trade_date=run.date,
+                        final_trade_decision=_pm_text,
+                    )
+                except Exception:
+                    logger.exception("memory-log store failed (continuing)")
 
             _persist_reports(run, results_dir, debate_state, risk_state)
 
