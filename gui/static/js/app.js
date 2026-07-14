@@ -706,7 +706,10 @@ function resetUiForNewRun() {
   document.getElementById("stat-llm").textContent = "LLM 0";
   document.getElementById("stat-tools").textContent = "TOOLS 0";
   document.getElementById("stat-tokens").textContent = "TOKENS 0\u2191 0\u2193";
-  document.getElementById("report-preview-card").style.display = "none";
+  // v2 template removed the preview-card wrapper; guard so the reset
+  // below still runs (unguarded, this line killed the whole function).
+  const _rpc = document.getElementById("report-preview-card");
+  if (_rpc) _rpc.style.display = "none";
   currentReportSections = {};
   analysisStats = { llm_calls: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
   
@@ -874,7 +877,7 @@ function handleChunkData(state) {
 
 function renderReportPreview() {
   const card = document.getElementById("report-preview-card");
-  card.style.display = "block";
+  if (card) card.style.display = "block";
   
   const tabsContainer = document.getElementById("report-tabs");
   tabsContainer.innerHTML = "";
