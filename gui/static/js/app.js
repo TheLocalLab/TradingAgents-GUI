@@ -666,6 +666,7 @@ function setUiRunning(isRunning) {
     dot.className = "status-dot running";
     txt.textContent = "RUNNING";
     startTime = Date.now();
+    window.startTime = startTime;  // v2 timer override reads window.startTime
     timerInterval = setInterval(updateTimer, 1000);
   } else {
     runBtn.style.display = "inline-flex";
