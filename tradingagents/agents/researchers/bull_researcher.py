@@ -8,10 +8,13 @@ def create_bull_researcher(llm):
         bull_history = investment_debate_state.get("bull_history", "")
 
         current_response = investment_debate_state.get("current_response", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        # .get(): analyst subsets are legal — a missing report reads as
+        # "(not produced this run)" instead of crashing the debate.
+        _missing = "(not produced this run)"
+        market_research_report = state.get("market_report") or _missing
+        sentiment_report = state.get("sentiment_report") or _missing
+        news_report = state.get("news_report") or _missing
+        fundamentals_report = state.get("fundamentals_report") or _missing
 
         prompt = f"""You are a Bull Analyst advocating for investing in the stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
 

@@ -8,10 +8,13 @@ def create_bear_researcher(llm):
         bear_history = investment_debate_state.get("bear_history", "")
 
         current_response = investment_debate_state.get("current_response", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        # .get(): analyst subsets are legal — a missing report reads as
+        # "(not produced this run)" instead of crashing the debate.
+        _missing = "(not produced this run)"
+        market_research_report = state.get("market_report") or _missing
+        sentiment_report = state.get("sentiment_report") or _missing
+        news_report = state.get("news_report") or _missing
+        fundamentals_report = state.get("fundamentals_report") or _missing
 
         prompt = f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
 

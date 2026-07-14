@@ -10,10 +10,13 @@ def create_conservative_debator(llm):
         current_aggressive_response = risk_debate_state.get("current_aggressive_response", "")
         current_neutral_response = risk_debate_state.get("current_neutral_response", "")
 
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        # .get(): analyst subsets are legal — a missing report reads as
+        # "(not produced this run)" instead of crashing the debate.
+        _missing = "(not produced this run)"
+        market_research_report = state.get("market_report") or _missing
+        sentiment_report = state.get("sentiment_report") or _missing
+        news_report = state.get("news_report") or _missing
+        fundamentals_report = state.get("fundamentals_report") or _missing
 
         trader_decision = state["trader_investment_plan"]
 
