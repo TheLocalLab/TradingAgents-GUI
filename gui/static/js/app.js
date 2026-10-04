@@ -274,8 +274,16 @@ async function loadProviders() {
     const setIfPresent = (id, val) => {
       const el = document.getElementById(id);
       if (!el || !val) return;
-      const has = Array.from(el.options).some(o => o.value === val);
-      if (has) el.value = val;
+      // <select>: only restore values that exist in the option list.
+      // Text inputs have no .options — restore unconditionally (the old
+      // Array.from(el.options) threw here and silently aborted the rest
+      // of the restore batch).
+      if (el.options) {
+        const has = Array.from(el.options).some(o => o.value === val);
+        if (has) el.value = val;
+      } else {
+        el.value = val;
+      }
     };
     setIfPresent("quick-model-select", saved.quick_model);
     setIfPresent("deep-model-select",  saved.deep_model);
@@ -420,6 +428,10 @@ function renderProviderSettings(providerKey) {
     `;
     document.getElementById("google-thinking").addEventListener("change", markConfigUnsaved);
   } else if (providerKey === "openrouter" || providerKey === "azure" || providerKey === "ollama") {
+    // Server-provided default — env-aware in containerized deployments.
+    // Never hardcode localhost here: runs would silently target the wrong host.
+    const ollamaUrl = (availableProviders.find(p => p.key === "ollama") || {}).url
+                      || "http://localhost:11434/v1";
     container.innerHTML = `
       <div class="provider-option-group">
         <h4>Custom Model Strings</h4>
@@ -436,7 +448,7 @@ function renderProviderSettings(providerKey) {
         ${providerKey === "ollama" ? `
         <div class="form-group" style="margin-top:0.75rem">
           <label>Ollama Server URL</label>
-          <input type="text" id="custom-backend-url" value="http://localhost:11434/v1" placeholder="http://localhost:11434/v1">
+          <input type="text" id="custom-backend-url" value="${ollamaUrl}" placeholder="${ollamaUrl}">
           <span class="form-hint">URL of your local Ollama instance</span>
         </div>` : ""}
       </div>
@@ -654,6 +666,7 @@ function setUiRunning(isRunning) {
     dot.className = "status-dot running";
     txt.textContent = "RUNNING";
     startTime = Date.now();
+    window.startTime = startTime;  // v2 timer override reads window.startTime
     timerInterval = setInterval(updateTimer, 1000);
   } else {
     runBtn.style.display = "inline-flex";
@@ -694,7 +707,10 @@ function resetUiForNewRun() {
   document.getElementById("stat-llm").textContent = "LLM 0";
   document.getElementById("stat-tools").textContent = "TOOLS 0";
   document.getElementById("stat-tokens").textContent = "TOKENS 0\u2191 0\u2193";
-  document.getElementById("report-preview-card").style.display = "none";
+  // v2 template removed the preview-card wrapper; guard so the reset
+  // below still runs (unguarded, this line killed the whole function).
+  const _rpc = document.getElementById("report-preview-card");
+  if (_rpc) _rpc.style.display = "none";
   currentReportSections = {};
   analysisStats = { llm_calls: 0, tool_calls: 0, tokens_in: 0, tokens_out: 0 };
   
@@ -862,7 +878,7 @@ function handleChunkData(state) {
 
 function renderReportPreview() {
   const card = document.getElementById("report-preview-card");
-  card.style.display = "block";
+  if (card) card.style.display = "block";
   
   const tabsContainer = document.getElementById("report-tabs");
   tabsContainer.innerHTML = "";
