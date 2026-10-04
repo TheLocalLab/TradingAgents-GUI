@@ -714,6 +714,10 @@
 
   function decisionClass(text) {
     const t = (text || "").toUpperCase();
+    // 5-tier scale: Overweight reads as bullish, Underweight as bearish.
+    // Check the "under"/"over" tiers first so they aren't mistaken for others.
+    if (t.includes("UNDERWEIGHT")) return "sell";
+    if (t.includes("OVERWEIGHT"))  return "buy";
     if (t.includes("BUY"))  return "buy";
     if (t.includes("SELL")) return "sell";
     if (t.includes("HOLD")) return "hold";

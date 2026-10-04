@@ -54,11 +54,24 @@ PROVIDER_DEFAULT_URLS = {
     "minimax-cn": "https://api.minimaxi.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "azure":      None,
-    # Containerized / remote deployments override via env (e.g. Ollama on
-    # another host); falls back to the local-install default.
-    "ollama":     os.environ.get("TRADINGAGENTS_LLM_BACKEND_URL")
-                  or "http://localhost:11434/v1",
+    # Resolved lazily by default_url_for() so values from .env (loaded after
+    # this module is imported) are honoured.
+    "ollama":     "http://localhost:11434/v1",
 }
+
+
+def default_url_for(provider: str) -> str | None:
+    """Default backend URL for ``provider``.
+
+    Containerized / remote deployments can point Ollama elsewhere via
+    ``TRADINGAGENTS_LLM_BACKEND_URL`` or ``OLLAMA_BASE_URL`` (real env or
+    ``.env``). Read at call time, not import time.
+    """
+    if provider == "ollama":
+        return (os.environ.get("TRADINGAGENTS_LLM_BACKEND_URL")
+                or os.environ.get("OLLAMA_BASE_URL")
+                or PROVIDER_DEFAULT_URLS["ollama"])
+    return PROVIDER_DEFAULT_URLS.get(provider)
 
 
 # Free-form notes shown beneath the model dropdown.
@@ -139,7 +152,7 @@ def provider_list() -> list[dict]:
         out.append({
             "key":              pid,
             "label":            PROVIDER_LABELS.get(pid, pid),
-            "url":              PROVIDER_DEFAULT_URLS.get(pid),
+            "url":              default_url_for(pid),
             "api_key_env":      env_var,
             "requires_api_key": env_var is not None,
             "notes":            PROVIDER_NOTES.get(pid),
