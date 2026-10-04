@@ -1079,10 +1079,69 @@
   let _wizardStep = 1;
   let _wizardProvider = null;
 
-  function openWizard() {
+  async function openWizard() {
     document.getElementById("wizard-overlay").style.display = "flex";
-    _wizardStep = 1; updateWizardSteps();
     populateWizardProviders();
+    // Check whether ~/.tradingagents/ already has data and gate on step 0 if so.
+    let startStep = 1;
+    try {
+      const res = await fetch("/api/local_data/summary");
+      const data = await res.json();
+      if (data && data.any) {
+        _wizardSummary = data;
+        _renderWizardExisting(data);
+        startStep = 0;
+      }
+    } catch { /* fall through to step 1 */ }
+    _wizardStep = startStep;
+    updateWizardSteps();
+  }
+  let _wizardSummary = null;
+  function _renderWizardExisting(data) {
+    const rootEl = document.getElementById("wizard-existing-root");
+    const list   = document.getElementById("wizard-existing-list");
+    if (rootEl) rootEl.textContent = data.root || "~/.tradingagents/";
+    if (!list) return;
+    const labels = {
+      runs: "run history", chats: "chat sessions", presets: "presets",
+      ui_state: "UI preferences", memory: "agent memory", logs: "logs",
+    };
+    list.innerHTML = "";
+    for (const key of Object.keys(labels)) {
+      const meta = data.categories?.[key];
+      if (!meta || !meta.count) continue;
+      const li = document.createElement("li");
+      li.textContent = `${meta.count} ${labels[key]}`;
+      list.appendChild(li);
+    }
+  }
+  async function _wizardMaybeWipe() {
+    const choice = document.querySelector('input[name="wizard-fresh"]:checked');
+    if (!choice || choice.value !== "wipe") return true;
+    // Confirm before wiping — reuse the wipe modal pattern with a quick prompt.
+    if (!confirm("Permanently delete ALL data in ~/.tradingagents/?\n\nThis affects every install on this device and cannot be undone.")) {
+      return false;
+    }
+    try {
+      const res = await fetch("/api/local_data/wipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "WIPE", all: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.showToast?.(data.error || "Wipe failed", "error");
+        return false;
+      }
+      window.showToast?.("Local data wiped. Starting fresh.", "success");
+      try { window.loadRuns?.(); } catch {}
+      try { window.chatLoadSessions?.(); } catch {}
+      try { window.loadPresets?.(); } catch {}
+      return true;
+    } catch (e) {
+      window.showToast?.("Wipe failed: " + e.message, "error");
+      return false;
+    }
   }
   window.closeWizard = function (skipping = false) {
     document.getElementById("wizard-overlay").style.display = "none";
@@ -1093,11 +1152,17 @@
     document.querySelectorAll(".wizard-step").forEach(s => {
       s.classList.toggle("active", parseInt(s.dataset.step) === _wizardStep);
     });
+    // Dots only represent the main 3-step flow (steps 1..3). Step 0 has no dot.
     document.querySelectorAll(".wizard-dot").forEach((d, i) => {
-      d.classList.toggle("active", i < _wizardStep);
+      d.classList.toggle("active", _wizardStep >= 1 && i < _wizardStep);
     });
     document.getElementById("wizard-back-btn").style.display = _wizardStep > 1 ? "" : "none";
-    document.getElementById("wizard-next-btn").textContent = _wizardStep === 3 ? "Get started" : "Next →";
+    const nextBtn = document.getElementById("wizard-next-btn");
+    if (_wizardStep === 0) {
+      nextBtn.textContent = "Continue →";
+    } else {
+      nextBtn.textContent = _wizardStep === 3 ? "Get started" : "Next →";
+    }
   }
   async function populateWizardProviders() {
     const container = document.getElementById("wizard-providers");
@@ -1130,6 +1195,11 @@
     }
   }
   window.wizardNext = async function () {
+    if (_wizardStep === 0) {
+      const ok = await _wizardMaybeWipe();
+      if (!ok) return;
+      _wizardStep = 1; updateWizardSteps(); return;
+    }
     if (_wizardStep === 1) {
       if (!_wizardProvider) {
         window.showToast?.("Pick a provider first.", "error"); return;
@@ -1199,7 +1269,142 @@
     document.querySelectorAll('.nav-btn[data-tab="setup"]').forEach(b => {
       b.addEventListener("click", () => loadHealth());
     });
+    // Auto-load Danger Zone summary when the API Keys tab opens.
+    document.querySelectorAll('.nav-btn[data-tab="apikeys"]').forEach(b => {
+      b.addEventListener("click", () => refreshDangerZone());
+    });
   }
+
+  // ====================================================================
+  // Danger Zone — wipe ~/.tradingagents data
+  // ====================================================================
+
+  const _DZ_LABELS = {
+    runs:     { label: "Run history",  unit: "runs"     },
+    chats:    { label: "Chat sessions", unit: "files"   },
+    presets:  { label: "Presets",       unit: "files"   },
+    ui_state: { label: "UI preferences", unit: "file"   },
+    memory:   { label: "Agent memory",   unit: "files"  },
+    logs:     { label: "Logs",           unit: "files"  },
+  };
+
+  function _fmtBytes(n) {
+    if (!n || n < 1024) return (n || 0) + " B";
+    const units = ["KB","MB","GB"]; let v = n / 1024, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return v.toFixed(1) + " " + units[i];
+  }
+
+  window._dzSummary = null;
+
+  window.refreshDangerZone = async function () {
+    const list = document.getElementById("danger-zone-list");
+    const rootEl = document.getElementById("danger-zone-root");
+    const btn = document.getElementById("danger-wipe-btn");
+    if (!list) return;
+    list.innerHTML = `<p class="form-hint">Loading…</p>`;
+    try {
+      const res = await fetch("/api/local_data/summary");
+      const data = await res.json();
+      window._dzSummary = data;
+      if (rootEl) rootEl.textContent = data.root || "~/.tradingagents/";
+      list.innerHTML = "";
+      for (const key of Object.keys(_DZ_LABELS)) {
+        const meta = data.categories?.[key] || { exists: false, count: 0, bytes: 0, path: "" };
+        const row = document.createElement("label");
+        row.className = "danger-zone-row" + (meta.count > 0 ? "" : " empty");
+        const info = _DZ_LABELS[key];
+        row.innerHTML = `
+          <input type="checkbox" data-dz="${key}" ${meta.count > 0 ? "" : "disabled"}>
+          <span class="dz-label">${info.label}</span>
+          <span class="dz-meta">${meta.count} ${info.unit} · ${_fmtBytes(meta.bytes)}</span>
+          <span class="dz-path">${meta.path || ""}</span>
+        `;
+        list.appendChild(row);
+      }
+      list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener("change", _updateWipeBtnState);
+      });
+      _updateWipeBtnState();
+    } catch (e) {
+      list.innerHTML = `<p class="form-hint">Could not load summary: ${e.message}</p>`;
+      if (btn) btn.disabled = true;
+    }
+  };
+
+  function _selectedCategories() {
+    return Array.from(document.querySelectorAll('#danger-zone-list input[type="checkbox"]:checked'))
+      .map(cb => cb.dataset.dz);
+  }
+
+  function _updateWipeBtnState() {
+    const btn = document.getElementById("danger-wipe-btn");
+    if (!btn) return;
+    btn.disabled = _selectedCategories().length === 0;
+  }
+
+  window.openWipeModal = function () {
+    const cats = _selectedCategories();
+    if (cats.length === 0) return;
+    const overlay = document.getElementById("wipe-overlay");
+    const list = document.getElementById("wipe-modal-list");
+    const rootEl = document.getElementById("wipe-modal-root");
+    const sum = window._dzSummary || { categories: {}, root: "~/.tradingagents/" };
+    if (rootEl) rootEl.textContent = sum.root || "~/.tradingagents/";
+    list.innerHTML = "";
+    for (const key of cats) {
+      const meta = sum.categories?.[key] || {};
+      const info = _DZ_LABELS[key] || { label: key, unit: "" };
+      const li = document.createElement("li");
+      li.textContent = `${info.label} — ${meta.count || 0} ${info.unit} (${_fmtBytes(meta.bytes || 0)})`;
+      list.appendChild(li);
+    }
+    document.getElementById("wipe-confirm-input").value = "";
+    document.getElementById("wipe-confirm-btn").disabled = true;
+    overlay.style.display = "flex";
+    setTimeout(() => document.getElementById("wipe-confirm-input").focus(), 30);
+  };
+
+  window.closeWipeModal = function (ev) {
+    if (ev && ev.target && ev.target.id !== "wipe-overlay") return;
+    document.getElementById("wipe-overlay").style.display = "none";
+  };
+
+  window.onWipeConfirmInput = function () {
+    const v = (document.getElementById("wipe-confirm-input").value || "").trim();
+    document.getElementById("wipe-confirm-btn").disabled = (v !== "WIPE");
+  };
+
+  window.performWipe = async function () {
+    const cats = _selectedCategories();
+    const btn = document.getElementById("wipe-confirm-btn");
+    if (cats.length === 0) return;
+    btn.disabled = true; btn.textContent = "Deleting…";
+    try {
+      const res = await fetch("/api/local_data/wipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "WIPE", categories: cats }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.showToast?.(data.error || "Wipe failed", "error");
+        btn.disabled = false; btn.textContent = "Delete forever";
+        return;
+      }
+      window.showToast?.(`Wiped: ${(data.wiped || []).join(", ")}`, "success");
+      document.getElementById("wipe-overlay").style.display = "none";
+      // Re-sync everything that may have changed.
+      refreshDangerZone();
+      try { window.loadRuns?.(); } catch {}
+      try { window.chatLoadSessions?.(); } catch {}
+      try { window.loadPresets?.(); } catch {}
+      try { window.loadUsageStats?.(); } catch {}
+    } catch (e) {
+      window.showToast?.("Wipe failed: " + e.message, "error");
+      btn.disabled = false; btn.textContent = "Delete forever";
+    }
+  };
 
   // ====================================================================
   // PHASE 8 — Chat tab

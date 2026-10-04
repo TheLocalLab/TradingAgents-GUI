@@ -1207,6 +1207,131 @@ def presets_delete(pid):
 # Sticky Configuration-tab state (server-side, survives restarts/browsers)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Local data — inspect / wipe ~/.tradingagents/  (Danger Zone)
+# ---------------------------------------------------------------------------
+
+_LOCAL_DATA_ROOT = Path.home() / ".tradingagents"
+
+# (category key, path, kind)  — kind: "file" | "dir"
+_LOCAL_DATA_TARGETS: list[tuple[str, Path, str]] = [
+    ("runs",     _LOCAL_DATA_ROOT / "runs.json",     "file"),
+    ("chats",    _LOCAL_DATA_ROOT / "chat",          "dir"),
+    ("presets",  _LOCAL_DATA_ROOT / "presets",       "dir"),
+    ("ui_state", _LOCAL_DATA_ROOT / "ui_state.json", "file"),
+    ("memory",   _LOCAL_DATA_ROOT / "memory",        "dir"),
+    ("logs",     _LOCAL_DATA_ROOT / "logs",          "dir"),
+]
+
+
+def _dir_stats(p: Path) -> tuple[int, int]:
+    """Return (file_count, total_bytes) for a directory; (0, 0) if missing."""
+    if not p.exists() or not p.is_dir():
+        return (0, 0)
+    n, sz = 0, 0
+    for child in p.rglob("*"):
+        if child.is_file():
+            n += 1
+            try:
+                sz += child.stat().st_size
+            except OSError:
+                pass
+    return (n, sz)
+
+
+def _local_data_summary() -> dict:
+    out: dict = {"root": str(_LOCAL_DATA_ROOT), "categories": {}, "any": False}
+    for key, path, kind in _LOCAL_DATA_TARGETS:
+        if kind == "file":
+            exists = path.exists()
+            size = path.stat().st_size if exists else 0
+            # "count" semantics: chats=N sessions, runs=N runs, presets=N files,
+            # ui_state=1 if present, etc. For files we report 1/0.
+            count = 1 if exists else 0
+            if key == "runs" and exists:
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        snap = json.load(f)
+                    count = len(snap.get("order") or [])
+                except Exception:
+                    count = 0
+        else:
+            count, size = _dir_stats(path)
+        out["categories"][key] = {
+            "exists": count > 0 or (path.exists() if kind == "file" else False),
+            "count":  count,
+            "bytes":  size,
+            "path":   str(path),
+        }
+        if count > 0:
+            out["any"] = True
+    return out
+
+
+def _wipe_target(path: Path, kind: str) -> None:
+    import shutil
+    if kind == "file":
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("wipe: failed to unlink %s", path)
+    else:
+        if path.exists() and path.is_dir():
+            try:
+                shutil.rmtree(path, ignore_errors=False)
+            except OSError:
+                logger.exception("wipe: failed to rmtree %s", path)
+
+
+@app.route("/api/local_data/summary", methods=["GET"])
+def local_data_summary():
+    """Counts + sizes for every category under ``~/.tradingagents/``."""
+    return jsonify(_local_data_summary())
+
+
+@app.route("/api/local_data/wipe", methods=["POST"])
+def local_data_wipe():
+    """Wipe selected categories under ``~/.tradingagents/``.
+
+    Body: ``{ "confirm": "WIPE", "categories": [...] }`` or
+          ``{ "confirm": "WIPE", "all": true }``.
+
+    Refuses while any run is in-flight to avoid corrupting a live RunManager.
+    """
+    body = request.get_json(silent=True) or {}
+    if (body.get("confirm") or "").strip() != "WIPE":
+        return jsonify({"error": "confirm token missing — type WIPE"}), 400
+    if runs.is_anything_running():
+        return jsonify({"error": "stop the active run before wiping"}), 409
+
+    valid = {k for k, _, _ in _LOCAL_DATA_TARGETS}
+    if body.get("all"):
+        selected = set(valid)
+    else:
+        selected = {c for c in (body.get("categories") or []) if c in valid}
+    if not selected:
+        return jsonify({"error": "no categories selected"}), 400
+
+    wiped: list[str] = []
+    for key, path, kind in _LOCAL_DATA_TARGETS:
+        if key not in selected:
+            continue
+        _wipe_target(path, kind)
+        wiped.append(key)
+
+    # Resync in-memory state with the now-empty disk.
+    if "runs" in selected:
+        runs.reset()
+    if "ui_state" in selected:
+        try:
+            ui_state.replace({})
+        except Exception:
+            logger.exception("wipe: ui_state replace failed")
+    # Presets/chat read from disk on each request, so no in-memory reset needed.
+
+    return jsonify({"ok": True, "wiped": wiped, "summary": _local_data_summary()})
+
+
 @app.route("/api/ui_state", methods=["GET"])
 def ui_state_get():
     """Return the saved Configuration-tab blob (provider, models, vendors…)."""

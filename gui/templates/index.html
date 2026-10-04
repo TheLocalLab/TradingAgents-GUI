@@ -502,6 +502,32 @@
       <button class="btn btn-primary" onclick="saveApiKeys()">🔒 Save API Keys</button>
       <span id="keys-saved-msg" class="saved-msg" style="display:none">✓ Saved securely to .env</span>
     </div>
+
+    <!-- ─── Danger Zone ─── -->
+    <details class="danger-zone" id="danger-zone">
+      <summary>
+        <span class="danger-zone-title">⚠ Danger Zone</span>
+        <span class="danger-zone-hint">Wipe local data stored under your user folder</span>
+      </summary>
+      <div class="danger-zone-body">
+        <p class="form-hint">
+          The settings below live in <code id="danger-zone-root">~/.tradingagents/</code>,
+          not inside this project folder. <strong>Any other install of this project on
+          this device shares the same data and will be affected.</strong>
+          Your <code>.env</code> (API keys) lives in the project folder and is not touched here.
+        </p>
+        <div id="danger-zone-list" class="danger-zone-list">
+          <p class="form-hint">Loading…</p>
+        </div>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-ghost btn-sm" onclick="refreshDangerZone()">Refresh</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-danger" id="danger-wipe-btn" onclick="openWipeModal()" disabled>
+            🗑 Wipe selected…
+          </button>
+        </div>
+      </div>
+    </details>
   </section>
 
   <!-- ─── TAB: REPORTS (v2) ─── -->
@@ -860,6 +886,37 @@ python -m gui.app</pre>
         </div>
       </div>
 
+      <!-- Step 0: existing data detected -->
+      <div class="wizard-step" data-step="0">
+        <h3>Existing setup detected</h3>
+        <p class="form-hint">
+          We found data from a previous install under
+          <code id="wizard-existing-root">~/.tradingagents/</code>.
+          This folder is shared by <strong>every install of TradingAgents-GUI
+          on this device</strong>.
+        </p>
+        <ul id="wizard-existing-list" class="wizard-existing-list"></ul>
+        <div class="wizard-fresh-choice">
+          <label class="wizard-fresh-opt">
+            <input type="radio" name="wizard-fresh" value="keep" checked>
+            <div>
+              <div class="wizard-fresh-label">Keep existing data</div>
+              <div class="form-hint">Recommended. Your runs, chats, and presets stay available.</div>
+            </div>
+          </label>
+          <label class="wizard-fresh-opt">
+            <input type="radio" name="wizard-fresh" value="wipe">
+            <div>
+              <div class="wizard-fresh-label" style="color:var(--danger)">Start fresh — wipe all</div>
+              <div class="form-hint">
+                Permanently delete the items above. <strong>This affects any other
+                install of this project on this device.</strong> Cannot be undone.
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <!-- Step 1: pick provider -->
       <div class="wizard-step active" data-step="1">
         <h3>1. Pick an LLM provider</h3>
@@ -904,6 +961,31 @@ python -m gui.app</pre>
 
 <!-- ═══════════════ TOAST ═══════════════ -->
 <div id="toast-container"></div>
+
+<!-- ═══════════════ WIPE CONFIRM MODAL ═══════════════ -->
+<div id="wipe-overlay" class="modal-overlay" style="display:none" onclick="closeWipeModal(event)">
+  <div class="modal wipe-modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeWipeModal()">✕</button>
+    <h2 class="wipe-modal-title">⚠ Wipe local data</h2>
+    <p>This will permanently delete the following from
+       <code id="wipe-modal-root">~/.tradingagents/</code>:</p>
+    <ul id="wipe-modal-list" class="wipe-modal-list"></ul>
+    <p class="wipe-modal-warn">
+      This affects <strong>every install of this project on this device</strong>,
+      not just this folder. There is no undo.
+    </p>
+    <p class="wipe-modal-confirm">Type <code>WIPE</code> below to enable the button:</p>
+    <input type="text" id="wipe-confirm-input" class="input-lg"
+           placeholder="WIPE" autocomplete="off"
+           oninput="onWipeConfirmInput()">
+    <div class="btn-row" style="margin-top:1.25rem">
+      <button class="btn btn-ghost" onclick="closeWipeModal()">Cancel</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-danger" id="wipe-confirm-btn"
+              onclick="performWipe()" disabled>Delete forever</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════ MODAL ═══════════════ -->
 <div id="modal-overlay" class="modal-overlay" style="display:none" onclick="closeModal()">

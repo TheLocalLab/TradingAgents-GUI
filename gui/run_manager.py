@@ -207,6 +207,21 @@ class RunManager:
         except Exception:
             logger.exception("RunManager.persist failed")
 
+    def reset(self) -> None:
+        """Wipe all in-memory runs and remove the persisted ``runs.json``.
+
+        Used by the Danger Zone wipe in the UI. Refuses nothing here — the
+        caller is expected to gate on ``is_anything_running()`` first.
+        """
+        with self._lock:
+            self.runs.clear()
+            self.order.clear()
+            self.current_id = None
+        try:
+            self._persist_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("RunManager.reset: failed to unlink %s", self._persist_path)
+
     def _load_persisted(self) -> None:
         """Restore runs from disk. ``running``/``queued`` states from a
         previous server lifetime become ``error`` (those threads are gone)."""
