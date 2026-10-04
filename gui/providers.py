@@ -14,6 +14,8 @@ but a missing recipe gracefully falls back to "key saved but not verified".
 
 from __future__ import annotations
 
+import os
+
 from tradingagents.llm_clients.api_key_env import PROVIDER_API_KEY_ENV
 
 
@@ -52,7 +54,10 @@ PROVIDER_DEFAULT_URLS = {
     "minimax-cn": "https://api.minimaxi.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
     "azure":      None,
-    "ollama":     "http://localhost:11434/v1",
+    # Containerized / remote deployments override via env (e.g. Ollama on
+    # another host); falls back to the local-install default.
+    "ollama":     os.environ.get("TRADINGAGENTS_LLM_BACKEND_URL")
+                  or "http://localhost:11434/v1",
 }
 
 

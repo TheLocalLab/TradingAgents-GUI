@@ -1,0 +1,34 @@
+# GUI image for Olares deployment.
+# Delta from upstream Dockerfile:
+#   1. installs the [gui] extra (flask, flask-cors) — upstream installs core only
+#   2. default command runs the web GUI bound to 0.0.0.0 (upstream ENTRYPOINT is the CLI)
+# The CLI remains available in the image (`tradingagents`), so the Olares
+# chart can run a shell/terminal container from this same image.
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+COPY . .
+RUN pip install --no-cache-dir ".[gui]"
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN useradd --create-home appuser
+USER appuser
+WORKDIR /home/appuser/app
+
+COPY --from=builder --chown=appuser:appuser /build .
+
+EXPOSE 5000
+CMD ["tradingagents-gui", "--host", "0.0.0.0", "--port", "5000", "--no-browser"]

@@ -51,7 +51,11 @@ logger = logging.getLogger(__name__)
 # Paths + bootstrap
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT      = Path(__file__).parent.parent
+# Overridable so pip-installed deployments (where __file__ lands in a
+# read-only site-packages) can point env-file storage at a writable,
+# persistent directory, e.g. TRADINGAGENTS_GUI_HOME=~/.tradingagents.
+_GUI_HOME         = os.environ.get("TRADINGAGENTS_GUI_HOME")
+PROJECT_ROOT      = Path(_GUI_HOME).expanduser() if _GUI_HOME else Path(__file__).parent.parent
 ENV_PATH          = PROJECT_ROOT / ".env"
 ENV_ENTERPRISE    = PROJECT_ROOT / ".env.enterprise"
 load_dotenv(ENV_PATH)
