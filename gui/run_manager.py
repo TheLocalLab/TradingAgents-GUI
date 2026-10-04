@@ -29,6 +29,7 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
+from tradingagents.agents.utils.rating import parse_rating
 from .agent_map import (
     ANALYSTS,
     FIXED_TEAMS,
@@ -348,9 +349,21 @@ def _worker(run: Run, persist_cb=None) -> None:
         risk_state:   dict = {}
         final_state:  dict = {}
 
+        # Memory-log parity with CLI propagate(): resolve pending outcomes
+        # for this ticker, then inject past context so agents see prior
+        # decisions. Failures here must never block the run.
+        past_context = ""
+        try:
+            if hasattr(graph, "_resolve_pending_entries"):
+                graph._resolve_pending_entries(run.ticker)
+            past_context = graph.memory_log.get_past_context(run.ticker) or ""
+        except Exception:
+            logger.exception("memory-log context load failed (continuing)")
+
         init_state = {
             "trade_date":              run.date,
             "company_of_interest":     run.ticker,
+            "past_context":            past_context,
             "investment_debate_state": {"bull_history": "", "bear_history": "",
                                         "judge_decision": "", "count": 0},
             "risk_debate_state":       {"aggressive_history": "", "conservative_history": "",
@@ -378,9 +391,14 @@ def _worker(run: Run, persist_cb=None) -> None:
                 run.roster[agent] = "completed"
             run.emit({"type": "agents_update", "agents": dict(run.roster)})
 
-            for section in run.reports:
-                if section in final_state and final_state[section]:
-                    run.reports[section] = str(final_state[section])
+            # final_state is keyed by node name (graph.stream chunk shape);
+            # report fields live INSIDE each node's output state.
+            for node_state in final_state.values():
+                if not isinstance(node_state, dict):
+                    continue
+                for section in run.reports:
+                    if node_state.get(section):
+                        run.reports[section] = str(node_state[section])
 
             if debate_state.get("bull_history") or debate_state.get("bear_history"):
                 # Format a combined debate report so the existing UI sees it.
@@ -388,7 +406,25 @@ def _worker(run: Run, persist_cb=None) -> None:
             if risk_state.get("aggressive_history") or risk_state.get("conservative_history"):
                 run.reports["final_trade_decision"] = _format_risk(risk_state)
 
-            run.decision = (str(final_state.get("final_trade_decision", "")).strip() or None)
+            # Portfolio Manager verdict: parse the 5-tier rating out of the
+            # judge decision text (deterministic — same parser the memory
+            # log uses). final_state never carried this key (node-name keys),
+            # which is why every run displayed "No Decision".
+            _pm_text = (risk_state.get("judge_decision")
+                        or run.reports.get("final_trade_decision") or "")
+            run.decision = parse_rating(_pm_text) if _pm_text.strip() else None
+
+            # CLI-parity memory write: propagate() stores the decision for
+            # deferred reflection; GUI streaming bypassed it, so the History
+            # tab's trading_memory.md was never created.
+            if _pm_text.strip():
+                try:
+                    graph.memory_log.store_decision(
+                        ticker=run.ticker, trade_date=run.date,
+                        final_trade_decision=_pm_text,
+                    )
+                except Exception:
+                    logger.exception("memory-log store failed (continuing)")
 
             _persist_reports(run, results_dir, debate_state, risk_state)
 
