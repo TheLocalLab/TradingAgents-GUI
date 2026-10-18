@@ -256,6 +256,12 @@ TradingAgents-GUI/
 
 ---
 
+## Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/tradingagents-gui/)
+
+---
+
 ## Credits
 
 - Original framework: [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents) — all the heavy thinking lives there.
