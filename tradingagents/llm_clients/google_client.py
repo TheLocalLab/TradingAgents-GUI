@@ -22,6 +22,9 @@ def _input_to_messages(input_) -> list:
 
 _STUB_USER = "Please proceed with the analysis described above."
 
+# The read timeout the OpenAI and Anthropic SDKs use by default.
+REQUEST_TIMEOUT_SECONDS = 600
+
 
 def _ensure_user_turn(input_):
     """Make the outgoing message list valid for Gemini's strict
@@ -96,6 +99,10 @@ class GoogleClient(BaseLLMClient):
         for key in ("timeout", "max_retries", "callbacks", "http_client", "http_async_client"):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
+
+        # Without a timeout a stalled Gemini call waits forever and hangs the
+        # run; an explicit caller-supplied timeout still wins.
+        llm_kwargs.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)
 
         # Unified api_key maps to provider-specific google_api_key
         google_api_key = self.kwargs.get("api_key") or self.kwargs.get("google_api_key")

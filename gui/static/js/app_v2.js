@@ -80,12 +80,31 @@
     portfolio: ["Portfolio Manager"],
   };
 
+  // The 5-tier rating scale plus the REVIEW sentinel (no readable rating).
+  // Order matters: UNDERWEIGHT/OVERWEIGHT are checked before the plain words.
+  const RATING_TIERS = [
+    { word: "UNDERWEIGHT", cls: "sell",   color: "err",    icon: "▼" },
+    { word: "OVERWEIGHT",  cls: "buy",    color: "ok",     icon: "▲" },
+    { word: "BUY",         cls: "buy",    color: "ok",     icon: "▲" },
+    { word: "SELL",        cls: "sell",   color: "err",    icon: "▼" },
+    { word: "HOLD",        cls: "hold",   color: "warn",   icon: "▶" },
+    { word: "REVIEW",      cls: "review", color: "warn",   icon: "?" },
+  ];
+
+  /** Resolve free text (a bare rating or a whole decision write-up) to a tier.
+   *  Prefers an explicit "Rating: X" label so prose like "the buy case is
+   *  weak" can't override the call; falls back to the first tier word. */
+  function ratingTier(text) {
+    const t = (text || "").toUpperCase();
+    const m = t.match(/RATING\W{0,6}(UNDERWEIGHT|OVERWEIGHT|BUY|SELL|HOLD|REVIEW)\b/);
+    if (m) return RATING_TIERS.find(x => x.word === m[1]) || null;
+    return RATING_TIERS.find(x => t.includes(x.word)) || null;
+  }
+
   // Final-decision text → mood (drives the decision card color & icon).
   function decisionMood(text) {
-    const t = (text || "").toUpperCase();
-    if (t.includes("BUY"))  return { color: "ok",   icon: "▲", label: "BUY" };
-    if (t.includes("SELL")) return { color: "err",  icon: "▼", label: "SELL" };
-    if (t.includes("HOLD")) return { color: "warn", icon: "▶", label: "HOLD" };
+    const tier = ratingTier(text);
+    if (tier) return { color: tier.color, icon: tier.icon, label: tier.word };
     return { color: "accent", icon: "★", label: "" };
   }
 
@@ -712,16 +731,17 @@
   window._currentReport = null;        // { ticker, date, path, decision, markdown }
   let _allReports = [];                 // cached list from /api/reports
 
+  /** Colour class for a rating: buy / sell / hold / review / other.
+   *  Overweight reads as bullish and Underweight as bearish. */
   function decisionClass(text) {
-    const t = (text || "").toUpperCase();
-    // 5-tier scale: Overweight reads as bullish, Underweight as bearish.
-    // Check the "under"/"over" tiers first so they aren't mistaken for others.
-    if (t.includes("UNDERWEIGHT")) return "sell";
-    if (t.includes("OVERWEIGHT"))  return "buy";
-    if (t.includes("BUY"))  return "buy";
-    if (t.includes("SELL")) return "sell";
-    if (t.includes("HOLD")) return "hold";
-    return "other";
+    const tier = ratingTier(text);
+    return tier ? tier.cls : "other";
+  }
+
+  /** Pill/label text: the exact tier ("OVERWEIGHT"), or an em dash if none. */
+  function decisionLabel(text) {
+    const tier = ratingTier(text);
+    return tier ? tier.word : "—";
   }
 
   /** Replace the legacy reports-list renderer with a v2 one. */
@@ -756,8 +776,7 @@
       const prev = select.value;
       select.innerHTML = `<option value="">— ${list.length ? "Pick a report" : "No reports yet"} —</option>`;
       list.forEach((r, idx) => {
-        const cls = decisionClass(r.decision);
-        const tag = cls === "other" ? "—" : cls.toUpperCase();
+        const tag = decisionLabel(r.decision);
         const opt = document.createElement("option");
         opt.value = String(idx);
         opt.textContent = `${r.ticker}  •  ${r.date}  •  ${tag}`;
@@ -1899,7 +1918,7 @@
             <span class="report-entry-date">${escapeHtml(r.date)}</span>
           </div>
           <div class="report-entry-decision">
-            <span class="decision-pill ${decisionClass(r.decision)}">${(decisionClass(r.decision) === "other" ? "—" : decisionClass(r.decision).toUpperCase())}</span>
+            <span class="decision-pill ${decisionClass(r.decision)}">${decisionLabel(r.decision)}</span>
             ${isPinned ? "Pinned" : "Click to pin"}
           </div>`;
         e.addEventListener("click", async () => {
@@ -2204,12 +2223,17 @@
 
     // Decision split as a small inline breakdown.
     const dec = d.decisions || {};
-    const total = (dec.BUY||0) + (dec.SELL||0) + (dec.HOLD||0) + (dec.other||0);
-    const decRows = [["BUY","ok"], ["HOLD","warn"], ["SELL","err"], ["other","mute"]].map(([k, tone]) => {
-      const n = dec[k] || 0;
-      const pct = total ? Math.round(100 * n / total) : 0;
-      return `<li><span class="bd-key bd-tone-${tone}">${k}</span><span class="bd-val">${n} · ${pct}%</span></li>`;
-    }).join("");
+    const total = Object.values(dec).reduce((a, n) => a + (n || 0), 0);
+    // BUY / HOLD / SELL always show; the finer tiers and REVIEW only when seen.
+    const decRows = [["BUY","ok",true], ["OVERWEIGHT","ok",false], ["HOLD","warn",true],
+                     ["UNDERWEIGHT","err",false], ["SELL","err",true],
+                     ["REVIEW","warn",false], ["other","mute",true]]
+      .filter(([k, , always]) => always || (dec[k] || 0) > 0)
+      .map(([k, tone]) => {
+        const n = dec[k] || 0;
+        const pct = total ? Math.round(100 * n / total) : 0;
+        return `<li><span class="bd-key bd-tone-${tone}">${k}</span><span class="bd-val">${n} · ${pct}%</span></li>`;
+      }).join("");
     const decEl = document.getElementById("usage-decisions");
     if (decEl) decEl.innerHTML = decRows || `<li class="muted">No completed runs yet.</li>`;
   }

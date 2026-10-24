@@ -1365,6 +1365,9 @@ textarea { resize: vertical; min-height: 80px; }
 .decision-pill.sell  { background: rgba(239,68,68,0.15);  color: #ef4444; }
 .decision-pill.hold  { background: rgba(245,158,11,0.15); color: #f59e0b; }
 .decision-pill.other { background: rgba(78,140,255,0.15); color: var(--accent); }
+/* REVIEW: no readable rating — needs a human look, not a tradeable call. */
+.decision-pill.review { background: rgba(245,158,11,0.12); color: #f59e0b;
+  border: 1px dashed currentColor; }
 
 /* ── Column 2: TOC ─────────────────────────────────────── */
 .report-toc-card {
@@ -1447,6 +1450,7 @@ textarea { resize: vertical; min-height: 80px; }
 .rsb-decision-text.buy   { color: #10b981; }
 .rsb-decision-text.sell  { color: #ef4444; }
 .rsb-decision-text.hold  { color: #f59e0b; }
+.rsb-decision-text.review { color: #f59e0b; font-style: italic; }
 .rsb-actions {
   margin-left: auto;
   display: inline-flex; align-items: center; gap: .35rem;
