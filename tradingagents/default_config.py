@@ -15,9 +15,16 @@ _ENV_OVERRIDES = {
     "TRADINGAGENTS_OUTPUT_LANGUAGE":      "output_language",
     "TRADINGAGENTS_MAX_DEBATE_ROUNDS":    "max_debate_rounds",
     "TRADINGAGENTS_MAX_RISK_ROUNDS":      "max_risk_discuss_rounds",
+    "TRADINGAGENTS_MAX_TOOL_ROUNDS":      "max_tool_rounds",
+    "TRADINGAGENTS_MAX_TOKENS":           "max_tokens",
     "TRADINGAGENTS_CHECKPOINT_ENABLED":   "checkpoint_enabled",
     "TRADINGAGENTS_BENCHMARK_TICKER":     "benchmark_ticker",
 }
+
+
+# Keys whose default is None but whose env value must be an integer (a
+# bad value fails loudly at import rather than being silently ignored).
+_OPTIONAL_INT_KEYS = {"max_tokens"}
 
 
 def _coerce(value: str, reference):
@@ -36,6 +43,12 @@ def _apply_env_overrides(config: dict) -> dict:
     for env_var, key in _ENV_OVERRIDES.items():
         raw = os.environ.get(env_var)
         if raw is None or raw == "":
+            continue
+        if key in _OPTIONAL_INT_KEYS:
+            try:
+                config[key] = int(raw)
+            except ValueError:
+                raise ValueError(f"{env_var} must be an integer, got {raw!r}") from None
             continue
         config[key] = _coerce(raw, config.get(key))
     return config
@@ -81,6 +94,13 @@ DEFAULT_CONFIG = _apply_env_overrides({
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
     "max_recur_limit": 100,
+    # After this many rounds of tool calls an analyst is told to write its
+    # report from what it has gathered, so a model that keeps calling tools
+    # cannot run the graph into its recursion limit and kill the run.
+    "max_tool_rounds": 20,
+    # Optional cap on output tokens per LLM call (None = provider default).
+    # Bounds a model that emits unbounded reasoning.
+    "max_tokens": None,
     # News / data fetching parameters
     # Increase for longer lookback strategies or to broaden macro coverage;
     # decrease to reduce token usage in agent prompts.

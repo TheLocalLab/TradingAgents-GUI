@@ -29,6 +29,8 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
+from langchain_core.callbacks import BaseCallbackHandler
+
 from tradingagents.agents.utils.rating import parse_rating
 from .agent_map import (
     ANALYSTS,
@@ -343,6 +345,7 @@ def _worker(run: Run, persist_cb=None) -> None:
             run.selected,
             config=config,
             debug=True,
+            callbacks=[_RunStatsCallback(run, config.get("quick_think_llm", ""))],
         )
 
         debate_state: dict = {}
@@ -521,6 +524,42 @@ def _build_config(params: dict, default_config: dict) -> dict:
     return cfg
 
 
+class _RunStatsCallback(BaseCallbackHandler):
+    """Counts every LLM call, its tokens and its estimated cost.
+
+    Attached to the graph's LLMs, so it sees every call, including the
+    structured-output agents whose responses never appear in the node stream.
+    """
+
+    def __init__(self, run: "Run", fallback_model: str = ""):
+        self.run = run
+        self.fallback_model = fallback_model
+        self._lock = threading.Lock()
+
+    def on_llm_end(self, response, **kwargs) -> None:
+        in_t = out_t = 0
+        model = None
+        for generations in response.generations:
+            for gen in generations:
+                msg = getattr(gen, "message", None)
+                usage = getattr(msg, "usage_metadata", None) or {}
+                in_t += int(usage.get("input_tokens") or 0)
+                out_t += int(usage.get("output_tokens") or 0)
+                meta = getattr(msg, "response_metadata", None) or {}
+                model = model or meta.get("model_name") or meta.get("model")
+        if not (in_t or out_t):
+            usage = (response.llm_output or {}).get("token_usage") or {}
+            in_t = int(usage.get("prompt_tokens") or 0)
+            out_t = int(usage.get("completion_tokens") or 0)
+        with self._lock:
+            s = self.run.stats
+            s["llm_calls"] += 1
+            s["tokens_in"] += in_t
+            s["tokens_out"] += out_t
+            s["cost_usd"] = round(
+                s["cost_usd"] + estimate_cost(in_t, out_t, model or self.fallback_model), 4)
+
+
 def _handle_node_chunk(run: Run, node_name: str, state: Any,
                        debate_state: dict, risk_state: dict,
                        deep_model: str, quick_model: str) -> None:
@@ -538,11 +577,14 @@ def _handle_node_chunk(run: Run, node_name: str, state: Any,
     # Tool-only nodes: count the tool call, skip report extraction.
     if node_name.startswith("tools_"):
         if isinstance(state, dict):
+            # A tool node's output holds one ToolMessage per executed call (it
+            # never carries ``tool_calls``, which live on the analyst's AI turn).
             for msg in _iter_messages(state.get("messages")):
-                for tc in getattr(msg, "tool_calls", None) or []:
-                    name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "?")
-                    run.stats["tool_calls"] += 1
-                    run.emit({"type": "tool_call", "tool": str(name), "node": node_name})
+                if type(msg).__name__ != "ToolMessage":
+                    continue
+                run.stats["tool_calls"] += 1
+                run.emit({"type": "tool_call", "tool": str(getattr(msg, "name", None) or "?"),
+                          "node": node_name})
         return
 
     if not isinstance(state, dict):
@@ -578,19 +620,10 @@ def _handle_node_chunk(run: Run, node_name: str, state: Any,
         if content:
             run.emit({"type": "message", "msg_type": msg_type,
                       "content": str(content)[:2000], "node": node_name})
-        if msg_type == "AI":
-            run.stats["llm_calls"] += 1
-            usage = getattr(msg, "usage_metadata", None) or {}
-            if usage:
-                in_t  = int(usage.get("input_tokens")  or 0)
-                out_t = int(usage.get("output_tokens") or 0)
-                run.stats["tokens_in"]  += in_t
-                run.stats["tokens_out"] += out_t
-                # Cost: deep model when we're in research/trader/risk, quick otherwise.
-                model = deep_model if _is_deep_model_node(node_name) else quick_model
-                run.stats["cost_usd"] = round(
-                    run.stats["cost_usd"] + estimate_cost(in_t, out_t, model), 4
-                )
+        # LLM calls, tokens and cost are counted by _RunStatsCallback: the
+        # structured-output agents (Research Manager, Trader, Portfolio
+        # Manager) never put their model response into the stream, so counting
+        # AI messages here missed them.
 
     run.stats["elapsed_s"] = round(time.time() - run.started_at, 2)
     run.emit({"type": "stats", "stats": dict(run.stats)})

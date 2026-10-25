@@ -100,6 +100,10 @@ class GoogleClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
+        # Gemini calls its output cap max_output_tokens.
+        if self.kwargs.get("max_tokens"):
+            llm_kwargs["max_output_tokens"] = self.kwargs["max_tokens"]
+
         # Without a timeout a stalled Gemini call waits forever and hangs the
         # run; an explicit caller-supplied timeout still wins.
         llm_kwargs.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)

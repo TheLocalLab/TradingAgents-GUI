@@ -1,6 +1,7 @@
 # TradingAgents/graph/setup.py
 
 from typing import Any, Dict
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -8,6 +9,47 @@ from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
+
+
+# Analyst selector key -> (state field its report lands in, display name).
+_ANALYST_REPORTS = {
+    "market":       ("market_report",       "market"),
+    "social":       ("sentiment_report",    "sentiment"),
+    "news":         ("news_report",         "news"),
+    "fundamentals": ("fundamentals_report", "fundamentals"),
+}
+
+
+def count_tool_rounds(messages) -> int:
+    """Rounds of tool calls so far: messages that asked for tools.
+
+    ``Msg Clear`` empties the message list between analysts, so this counts
+    only the analyst currently running.
+    """
+    return sum(1 for m in messages if getattr(m, "tool_calls", None))
+
+
+def create_wrap_up(llm: Any, report_key: str, label: str):
+    """Node that makes an analyst write its report without further tools.
+
+    Runs after a tool round once the cap is reached. It sees every tool
+    result gathered so far (tool calls always have their responses by then,
+    which providers require) and asks the unbound LLM for the final report.
+    """
+    def wrap_up(state):
+        ticker = state.get("company_of_interest") or "the instrument"
+        date = state.get("trade_date") or "the analysis date"
+        nudge = HumanMessage(content=(
+            "You have used your tool-call budget. Using ONLY the data already "
+            f"gathered above, write your final {label} report for {ticker} as of "
+            f"{date} now, in markdown, ending with a summary table. Do not "
+            "call any tools; if some data is missing, say so plainly."
+        ))
+        result = llm.invoke(list(state["messages"]) + [nudge])
+        content = result.content if isinstance(result.content, str) else str(result.content)
+        return {"messages": [result], report_key: content}
+
+    return wrap_up
 
 
 class GraphSetup:
@@ -19,8 +61,14 @@ class GraphSetup:
         deep_thinking_llm: Any,
         tool_nodes: Dict[str, ToolNode],
         conditional_logic: ConditionalLogic,
+        max_tool_rounds: int = 20,
     ):
-        """Initialize with required components."""
+        """Initialize with required components.
+
+        ``max_tool_rounds`` caps each analyst's rounds of tool calls
+        (0/None disables the cap).
+        """
+        self.max_tool_rounds = max_tool_rounds
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.tool_nodes = tool_nodes
@@ -128,7 +176,22 @@ class GraphSetup:
                 getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
                 [current_tools, current_clear],
             )
-            workflow.add_edge(current_tools, current_analyst)
+            if self.max_tool_rounds:
+                report_key, label = _ANALYST_REPORTS[analyst_type]
+                wrap_name = f"Wrap Up {analyst_type.capitalize()}"
+                workflow.add_node(
+                    wrap_name, create_wrap_up(self.quick_thinking_llm, report_key, label)
+                )
+                cap = self.max_tool_rounds
+                workflow.add_conditional_edges(
+                    current_tools,
+                    lambda state, _a=current_analyst, _w=wrap_name, _cap=cap:
+                        _w if count_tool_rounds(state["messages"]) >= _cap else _a,
+                    [current_analyst, wrap_name],
+                )
+                workflow.add_edge(wrap_name, current_clear)
+            else:
+                workflow.add_edge(current_tools, current_analyst)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
