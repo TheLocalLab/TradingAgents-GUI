@@ -24,7 +24,7 @@ Each run produces a multi-section markdown report (Market / Sentiment / News / F
 
 ## What you get
 
-Tracks upstream **TradingAgents v0.2.5**, then adds:
+Based on upstream **TradingAgents v0.2.5**, with selected fixes from later releases ported in (see [Upstream compatibility](#upstream-compatibility)), then adds:
 
 | Feature | Notes |
 | --- | --- |
@@ -32,10 +32,11 @@ Tracks upstream **TradingAgents v0.2.5**, then adds:
 | **Report-length control** | Three modes (Concise / Standard / Comprehensive) — injects a directive into every agent prompt to control how verbose the saved report is. Save tokens on a "Concise" run. |
 | **Visual pipeline** | Vertical stages with real progress bars; agents show pending / in-progress / completed / errored. |
 | **Tabbed output area** | Live Feed, Reports preview, Tool calls — each in its own pane with proper breathing room. |
-| **Final decision card** | Color-coded (BUY / SELL / HOLD) with one-click copy. |
+| **Final decision card** | Color-coded by rating (Buy / Overweight / Hold / Underweight / Sell) with one-click copy. If the Portfolio Manager's answer has no readable rating it shows **REVIEW** instead of guessing a Hold. |
 | **Reports tab redesign** | 3-pane: searchable index, table of contents, reader. Re-run with one click, export `.md` / `.html` / `.pdf`, delete from the UI. |
 | **Live Health/Setup tab** | Replaces the static "instructions" tab. Diagnostics for Python version, deps, key configured, results dir writable, disk space. |
-| **First-run wizard** | Auto-opens when no provider key is set: pick a provider, paste a key, test it, you're done. |
+| **First-run wizard** | Auto-opens when no provider key is set: pick a provider, paste a key, test it, you're done. If it finds data from another install it asks whether to keep it or start fresh. |
+| **Local data controls** | Runs, chats, presets and UI preferences are saved in `~/.tradingagents/` and survive restarts and private windows. A **Danger Zone** on the API Keys tab wipes them by category (you must type `WIPE`). See [Configuration](#configuration). |
 | **Chat tab** | Multi-session chat with any provider you have a key for; pin past reports as grounding context; live token-counter with context-window warning. |
 | **Theme system** | Three built-in themes: **Terminal** (default, blue neon), **Modern** (clean cyan), **Bloomberg** (black + amber/green, mono-heavy). Persists in localStorage. |
 | **Real Stop / Cancel** | Backend supports cooperative cancellation via a `threading.Event`. The Stop button actually works. |
@@ -44,7 +45,7 @@ Tracks upstream **TradingAgents v0.2.5**, then adds:
 | **Dual-region providers** | Qwen-CN, GLM-CN, MiniMax-CN are now first-class — no more hardcoded provider list. |
 | **Cleaner backend** | Refactored from one 817-line `app.py` into focused modules (`agent_map.py`, `providers.py`, `env_store.py`, `run_manager.py`, `chat.py`, `stats.py`). |
 
-The framework itself (agents, prompts, dataflows) is **unchanged from upstream** — this fork is a wrapper, not a re-implementation.
+The multi-agent pipeline (agents, prompts, graph) is upstream's. This fork is mainly a GUI wrapper, plus targeted compatibility and reliability fixes in the framework layer (provider quirks, tool-argument guards, a per-analyst tool-round cap). See [Upstream compatibility](#upstream-compatibility).
 
 ---
 
@@ -129,13 +130,24 @@ docker compose --profile ollama up
 
 ## Configuration
 
-Three places to know about:
+Where things are saved:
 
 | Where | What |
 | --- | --- |
-| `.env` (project root) | API keys, provider/model defaults. Managed from **API Keys** tab in the UI. |
-| `~/.tradingagents/` | Cache, reports, persistent memory log — created automatically. |
-| `~/.tradingagents/chat/` | Chat session JSON files (multi-session storage). |
+| `.env` (project root) | API keys, provider/model defaults. Managed from the **API Keys** tab. **Per install**: it lives in the project folder. |
+| `~/.tradingagents/logs/` | Saved reports, one folder per `<ticker>/<date>/`. |
+| `~/.tradingagents/runs.json` | Run history and per-run stats (tokens, cost, decision). Drives the Reports and History tabs. |
+| `~/.tradingagents/chat/` | Chat sessions (one JSON file each). |
+| `~/.tradingagents/presets/` | Saved Analyze-form presets. |
+| `~/.tradingagents/ui_state.json` | UI preferences (theme, selected provider and models, vendors, …). |
+| `~/.tradingagents/memory/` | The agents' persistent decision memory log. |
+
+> **`~/.tradingagents/` is shared by every install on the same user account.** A fresh install in a new folder
+> still sees your old reports, chats and settings, and deleting the project folder does *not* delete them.
+> Only `.env` (your API keys) goes with the project folder.
+
+To clear that data, open **API Keys → Danger Zone**, tick the categories to remove, and type `WIPE` to confirm.
+It affects *every* install on this machine and cannot be undone. Your API keys in `.env` are not touched.
 
 Provider env-vars the GUI sets (also editable by hand):
 
@@ -149,6 +161,23 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=...
 # (one row per provider — see Models & Keys tab)
 ```
+
+Optional settings (all can go in `.env`):
+
+```bash
+# Safety caps
+TRADINGAGENTS_MAX_TOOL_ROUNDS=20     # tool-call rounds an analyst gets before it must write its report (default 20)
+TRADINGAGENTS_MAX_TOKENS=4096        # cap output tokens per LLM call (unset = provider default; must be a whole number)
+
+# Remote / containerized setups
+OLLAMA_BASE_URL=http://192.168.1.50:11434   # Ollama on another machine ("/v1" is added for you if missing)
+TRADINGAGENTS_LLM_BACKEND_URL=...    # default backend URL shown for Ollama in the GUI
+TRADINGAGENTS_GUI_HOME=/data         # where the GUI keeps its .env when the install folder is read-only (e.g. Docker)
+```
+
+The analyst cap exists because a model that keeps asking for tools would otherwise run the graph into its
+recursion limit and kill the whole run. At the cap, the analyst is told to write its report from the data
+it has already gathered. Set it to `0` to turn the cap off.
 
 ### Report length
 
@@ -172,7 +201,7 @@ Three dots in the lower-left of the sidebar:
 - **Modern** — cleaner cyan, softer corners, less glow.
 - **Bloomberg** — black + amber/green, mono-heavy, sharper corners, uppercase headers.
 
-Saved in `localStorage` per browser.
+Saved with your other UI preferences in `~/.tradingagents/ui_state.json`, so your choice survives restarts and private windows.
 
 ---
 
@@ -203,7 +232,10 @@ tradingagents-gui      # this fork's GUI (same as start.bat / start.sh)
 | "No API key set" in Setup tab | Open **API Keys** tab, paste a key, click Save. The first-run wizard does this too. |
 | Run hangs at the first analyst | Almost always a bad key or network/proxy block. Use the **test** button next to your key. |
 | PDF export looks odd / has extra header | The browser's Save-as-PDF dialog is used — pick "Save as PDF" as the destination, then tweak margins/scale in the print preview if needed. (As of v0.2.5+gui.2 the WeasyPrint server-side path was removed in favor of this zero-install browser route.) |
-| Tokens or context "$0" | Pricing only published for major providers. The estimator is informational, not a billing system. |
+| Tokens or context "$0" | Pricing is only built in for some models, and the newest ones may not be listed yet, so their estimate shows `$0`. The estimator is informational, not a billing system. |
+| Decision shows **REVIEW** | The Portfolio Manager's answer had no readable `Rating:` line (or its ratings disagreed), so no call was recorded rather than guessing a Hold. Read the report and re-run if needed. |
+| "Address already in use" / port 5000 busy | Another app (often macOS AirPlay) holds port 5000. Start on another port: `tradingagents-gui --port 5001`. |
+| I reinstalled but still see my old reports / chats | Those live in `~/.tradingagents/`, which every install on your account shares. Use **API Keys → Danger Zone** to clear them. |
 | Want to expose to LAN | `start.bat --host 0.0.0.0`. **Do not expose to the public internet** — no auth layer. |
 | Where are my reports? | `~/.tradingagents/logs/<ticker>/<date>/reports/complete_report.md`. The **Reports** tab is a viewer for that folder. |
 
@@ -220,7 +252,23 @@ Notable v0.2.5 upstream changes baked in:
 - **Remote Ollama** — `OLLAMA_BASE_URL` lets the framework hit an Ollama instance on another machine.
 - **Auto-key-detection** — providers advertise which env var holds their key.
 
-I plan to keep this fork rebased on upstream as it evolves. The GUI deliberately lives in its own `gui/` package so upstream changes are easy to absorb.
+### Ported from later upstream releases
+
+Upstream is well past v0.2.5 (v0.7.0 at the time of writing). Selected fixes have been cherry-picked in:
+
+- **Model catalog** refresh (GPT-6, Claude Opus 5.5 / Fable 5.1 / Sonnet 5, Gemini 3.8, Grok 4.6, GLM-5.3, Qwen 3.8, MiniMax-M3, DeepSeek Flash). Previous generations stay selectable.
+- **Strict rating parsing** — a rating is read only from its `Rating:` label, and an unreadable decision is flagged `REVIEW` instead of becoming a fake Hold.
+- **Gemini request timeout** (600 s) so a stalled call can't hang a run.
+- **Analyst tool-round cap** and the optional `TRADINGAGENTS_MAX_TOKENS` output cap.
+- **Data fixes** — null-safe Yahoo news, crypto subreddits for coin tickers, and currency labels on Yahoo fundamentals.
+
+### Not ported yet
+
+Parallel analysts, a separate provider per model tier, ChatGPT-plan sign-in, backtesting, SEC EDGAR fundamentals and
+upstream's point-in-time (look-ahead) fixes. Upstream reorganised its packages in v0.5.1, so these can't be
+rebased in; they need a deliberate port.
+
+This fork can't simply track upstream anymore. I cherry-pick what applies cleanly and port the bigger features on purpose. The GUI deliberately lives in its own `gui/` package so upstream changes stay easy to absorb.
 
 ---
 
@@ -228,9 +276,12 @@ I plan to keep this fork rebased on upstream as it evolves. The GUI deliberately
 
 ```
 TradingAgents-GUI/
-├── tradingagents/                ← upstream framework, untouched
-│   └── agents/utils/agent_utils.py   ← (one helper added: get_brevity_instruction)
-├── cli/                          ← upstream CLI, untouched
+├── tradingagents/                ← upstream framework + targeted fixes (see Upstream compatibility)
+│   ├── agents/utils/agent_utils.py   ← get_brevity_instruction helper
+│   ├── agents/utils/tool_guard.py    ← keeps malformed tool calls from crashing a run
+│   └── graph/setup.py                ← analyst tool-round cap
+├── cli/                          ← upstream CLI
+├── tests/                        ← pytest suite
 ├── gui/                          ← this fork's GUI
 │   ├── app.py                    ← Flask routes
 │   ├── run_manager.py            ← Concurrent runs, cancellation, event fan-out
@@ -239,6 +290,8 @@ TradingAgents-GUI/
 │   ├── agent_map.py              ← Agent / team / report-section canonical metadata
 │   ├── providers.py              ← Provider catalog driven by upstream api_key_env
 │   ├── stats.py                  ← Token pricing + cost estimator
+│   ├── presets.py                ← Saved Analyze-form presets
+│   ├── ui_state.py               ← Server-side UI preferences
 │   ├── templates/index.html      ← Single-page UI
 │   └── static/
 │       ├── css/style.css         ← Themes + all component styles
@@ -246,7 +299,8 @@ TradingAgents-GUI/
 │       └── js/app_v2.js          ← Phase-4-onward redesign hooks
 ├── install.bat  / install.sh     ← One-time environment setup
 ├── start.bat    / start.sh       ← Launch the GUI (refuses if no .venv)
-├── Dockerfile                    ← For containerized deployment
+├── Dockerfile                    ← CLI image for containerized deployment
+├── Dockerfile.gui                ← GUI image (serves on 0.0.0.0:5000)
 └── docker-compose.yml
 ```
 

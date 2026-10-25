@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Breaking changes within the 0.x line are called out explicitly.
 
+## [Unreleased]
+
+GUI-fork changes since `0.2.5+gui.2`, including fixes cherry-picked from upstream
+v0.4–v0.7 (this fork cannot rebase: upstream reorganised its packages in v0.5.1).
+
+### Added
+
+- **Danger Zone** (API Keys tab) to wipe `~/.tradingagents/` data by category, behind
+  a type-`WIPE` confirmation, plus a keep-or-start-fresh step in the first-run wizard
+  when data from another install is found.
+- **Model catalog refresh**: GPT-6, GPT-5.6, Claude Opus 5.5 / Fable 5.1 / Sonnet 5,
+  Gemini 3.8 / 3.5, Grok 4.6, GLM-5.3, Qwen 3.8, MiniMax-M3, DeepSeek Flash.
+  Previous generations remain selectable; retired IDs stay valid via `LEGACY_MODELS`.
+- **Analyst tool-round cap** (`TRADINGAGENTS_MAX_TOOL_ROUNDS`, default 20): an analyst
+  that keeps calling tools is made to write its report from what it has gathered
+  instead of running the graph into its recursion limit. (upstream #1420)
+- **`TRADINGAGENTS_MAX_TOKENS`**: optional output-token cap per LLM call. (upstream #1204)
+- **`TRADINGAGENTS_GUI_HOME`** and env-aware Ollama URLs for containerized installs,
+  and `Dockerfile.gui`. (#3)
+- Crypto tickers read r/CryptoCurrency, r/CryptoMarkets and the coin's own subreddit.
+  (upstream #1461)
+- Yahoo fundamentals label each money figure with its currency. (upstream #1456)
+- The GUI shows the exact rating tier (Overweight / Underweight) and a **REVIEW** flag.
+
+### Changed
+
+- **Strict rating parsing**: a rating is read only from its `Rating:` label; the decision's
+  own line beats a quoted one; an unreadable decision is `REVIEW`, not a fake Hold. The memory
+  log tags such decisions `REVIEW`. (upstream #1466, #1170)
+- Gemini calls time out after 600 seconds by default. (upstream #1417)
+- The Ollama default URL is read when requested, so values in `.env` are honoured.
+
+### Fixed
+
+- GUI runs showed "No Decision" for every run, never wrote the memory log, and crashed
+  when fewer than four analysts were selected. (#5)
+- The Reports pane, elapsed timer and saved Ollama URL / custom model fields did not
+  restore. (#4)
+- Run statistics were wrong: tool calls were always 0 and LLM calls, tokens and cost missed
+  the Research Manager, Trader and Portfolio Manager. They are now counted from an LLM
+  callback, which also corrects the History Usage card and report footers.
+- One Yahoo news article with a null field no longer discards the ticker's news.
+  (upstream #1458)
+
 ## [0.2.5] — 2026-05-11
 
 ### Added
