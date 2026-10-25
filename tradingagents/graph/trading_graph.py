@@ -109,11 +109,22 @@ class TradingAgentsGraph:
             max_debate_rounds=self.config["max_debate_rounds"],
             max_risk_discuss_rounds=self.config["max_risk_discuss_rounds"],
         )
+        # An analyst takes two graph steps per tool round, plus its first turn
+        # and its wrap-up; a cap at or past the recursion limit would end the
+        # run there instead of wrapping the analyst up.
+        max_tool_rounds = self.config.get("max_tool_rounds", 20)
+        max_recur_limit = self.config.get("max_recur_limit", 100)
+        if max_tool_rounds and 2 * max_tool_rounds + 2 >= max_recur_limit:
+            raise ValueError(
+                f"max_tool_rounds={max_tool_rounds} needs max_recur_limit "
+                f"above {2 * max_tool_rounds + 2} (got {max_recur_limit})"
+            )
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,
             self.tool_nodes,
             self.conditional_logic,
+            max_tool_rounds=max_tool_rounds,
         )
 
         self.propagator = Propagator(
@@ -136,6 +147,10 @@ class TradingAgentsGraph:
         """Get provider-specific kwargs for LLM client creation."""
         kwargs = {}
         provider = self.config.get("llm_provider", "").lower()
+
+        max_tokens = self.config.get("max_tokens")
+        if max_tokens:
+            kwargs["max_tokens"] = int(max_tokens)
 
         if provider == "google":
             thinking_level = self.config.get("google_thinking_level")

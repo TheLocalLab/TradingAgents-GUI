@@ -245,6 +245,11 @@ def get_stockstats_indicator(
     return str(indicator_value)
 
 
+# Yahoo quotes some exchanges in a minor unit (London in pence = "GBp"). Market
+# cap is reported in the major unit, so label it with that one.
+_MAJOR_CURRENCY = {"GBp": "GBP", "GBX": "GBP", "ZAc": "ZAR", "ILA": "ILS"}
+
+
 def get_fundamentals(
     ticker: Annotated[str, "ticker symbol of the company"],
     curr_date: Annotated[str, "current date (not used for yfinance)"] = None
@@ -257,11 +262,23 @@ def get_fundamentals(
         if not info:
             return f"No fundamentals data found for symbol '{ticker}'"
 
+        # Currency each kind of figure is in, so the analyst never has to
+        # guess: prices in the trading currency exactly as quoted ("GBp" for
+        # London), market cap in its major unit, and income-statement totals
+        # in the *reporting* currency (an ADR such as TSM reports in TWD).
+        trading = info.get("currency") or ""
+        reporting = info.get("financialCurrency") or trading
+        cur_of = {
+            "price": trading,
+            "cap":   _MAJOR_CURRENCY.get(trading, trading),
+            "fin":   reporting,
+        }
+
         fields = [
             ("Name", info.get("longName")),
             ("Sector", info.get("sector")),
             ("Industry", info.get("industry")),
-            ("Market Cap", info.get("marketCap")),
+            ("Market Cap", info.get("marketCap"), "cap"),
             ("PE Ratio (TTM)", info.get("trailingPE")),
             ("Forward PE", info.get("forwardPE")),
             ("PEG Ratio", info.get("pegRatio")),
@@ -270,14 +287,14 @@ def get_fundamentals(
             ("Forward EPS", info.get("forwardEps")),
             ("Dividend Yield", info.get("dividendYield")),
             ("Beta", info.get("beta")),
-            ("52 Week High", info.get("fiftyTwoWeekHigh")),
-            ("52 Week Low", info.get("fiftyTwoWeekLow")),
-            ("50 Day Average", info.get("fiftyDayAverage")),
-            ("200 Day Average", info.get("twoHundredDayAverage")),
-            ("Revenue (TTM)", info.get("totalRevenue")),
-            ("Gross Profit", info.get("grossProfits")),
-            ("EBITDA", info.get("ebitda")),
-            ("Net Income", info.get("netIncomeToCommon")),
+            ("52 Week High", info.get("fiftyTwoWeekHigh"), "price"),
+            ("52 Week Low", info.get("fiftyTwoWeekLow"), "price"),
+            ("50 Day Average", info.get("fiftyDayAverage"), "price"),
+            ("200 Day Average", info.get("twoHundredDayAverage"), "price"),
+            ("Revenue (TTM)", info.get("totalRevenue"), "fin"),
+            ("Gross Profit", info.get("grossProfits"), "fin"),
+            ("EBITDA", info.get("ebitda"), "fin"),
+            ("Net Income", info.get("netIncomeToCommon"), "fin"),
             ("Profit Margin", info.get("profitMargins")),
             ("Operating Margin", info.get("operatingMargins")),
             ("Return on Equity", info.get("returnOnEquity")),
@@ -285,13 +302,16 @@ def get_fundamentals(
             ("Debt to Equity", info.get("debtToEquity")),
             ("Current Ratio", info.get("currentRatio")),
             ("Book Value", info.get("bookValue")),
-            ("Free Cash Flow", info.get("freeCashflow")),
+            ("Free Cash Flow", info.get("freeCashflow"), "fin"),
         ]
 
         lines = []
-        for label, value in fields:
-            if value is not None:
-                lines.append(f"{label}: {value}")
+        for field in fields:
+            label, value = field[0], field[1]
+            if value is None:
+                continue
+            unit = cur_of.get(field[2], "") if len(field) > 2 else ""
+            lines.append(f"{label}: {value}" + (f" {unit}" if unit else ""))
 
         header = f"# Company Fundamentals for {ticker.upper()}\n"
         header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"

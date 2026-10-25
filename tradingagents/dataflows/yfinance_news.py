@@ -49,19 +49,38 @@ def _coerce_pub_date(raw) -> datetime | None:
     return None
 
 
+def _text(value, default: str = "") -> str:
+    """``value`` if it is a non-blank string, else ``default``.
+
+    Yahoo sends some fields as explicit nulls (``"provider": null``), which
+    ``dict.get(key, default)`` returns as ``None`` instead of the default.
+    """
+    return value if isinstance(value, str) and value.strip() else default
+
+
+def _dict(value) -> dict:
+    """``value`` if it is a dict, else an empty dict (null-safe ``.get``)."""
+    return value if isinstance(value, dict) else {}
+
+
 def _extract_article_data(article: dict) -> dict:
-    """Extract article data from yfinance news format (handles nested 'content' structure)."""
+    """Extract article data from yfinance news format (handles nested 'content' structure).
+
+    Null-safe: one article with a null field must not cost the whole ticker's
+    news (an uncaught ``AttributeError`` here used to surface as "Error
+    fetching news").
+    """
     # Handle nested content structure
     if "content" in article:
-        content = article["content"]
-        title = content.get("title", "No title")
-        summary = content.get("summary", "")
-        provider = content.get("provider", {})
-        publisher = provider.get("displayName", "Unknown")
+        content = _dict(article["content"])
+        title = _text(content.get("title"), "No title")
+        summary = _text(content.get("summary"))
+        provider = _dict(content.get("provider"))
+        publisher = _text(provider.get("displayName"), "Unknown")
 
         # Get URL from canonicalUrl or clickThroughUrl
-        url_obj = content.get("canonicalUrl") or content.get("clickThroughUrl") or {}
-        link = url_obj.get("url", "")
+        url_obj = _dict(content.get("canonicalUrl")) or _dict(content.get("clickThroughUrl"))
+        link = _text(url_obj.get("url"))
 
         pub_date = _coerce_pub_date(content.get("pubDate"))
 
@@ -76,10 +95,10 @@ def _extract_article_data(article: dict) -> dict:
         # Fallback for flat structure — try ``providerPublishTime`` (older
         # field name) which yfinance still emits on the search path.
         return {
-            "title": article.get("title", "No title"),
-            "summary": article.get("summary", ""),
-            "publisher": article.get("publisher", "Unknown"),
-            "link": article.get("link", ""),
+            "title": _text(article.get("title"), "No title"),
+            "summary": _text(article.get("summary")),
+            "publisher": _text(article.get("publisher"), "Unknown"),
+            "link": _text(article.get("link")),
             "pub_date": _coerce_pub_date(article.get("providerPublishTime")),
         }
 

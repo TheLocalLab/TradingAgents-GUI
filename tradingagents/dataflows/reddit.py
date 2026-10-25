@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Iterable
+from typing import Iterable, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -29,6 +29,23 @@ _UA = "tradingagents/0.2 (+https://github.com/TauricResearch/TradingAgents)"
 # discussion. wallstreetbets has the most volume but most noise; stocks /
 # investing trend more measured. Caller can override.
 DEFAULT_SUBREDDITS = ("wallstreetbets", "stocks", "investing")
+
+# Crypto tickers (Yahoo style, e.g. "BTC-USD") get crypto communities instead
+# of the stock subreddits, whose posts rarely mention coins.
+CRYPTO_SUBREDDITS = ("CryptoCurrency", "CryptoMarkets")
+_CRYPTO_QUOTES = {"USD", "USDT", "USDC", "EUR", "GBP", "JPY", "BTC", "ETH"}
+_COIN_SUBREDDITS = {"BTC": "Bitcoin", "ETH": "ethereum", "SOL": "solana"}
+
+
+def subreddits_for(ticker: str) -> tuple[str, ...]:
+    """Subreddits to search for ``ticker``: crypto communities for a coin pair
+    (the coin's own subreddit first when it has a big one), else the stock
+    defaults."""
+    base, sep, quote = (ticker or "").upper().partition("-")
+    if sep and quote in _CRYPTO_QUOTES:
+        coin = _COIN_SUBREDDITS.get(base)
+        return ((coin,) if coin else ()) + CRYPTO_SUBREDDITS
+    return DEFAULT_SUBREDDITS
 
 
 def _fetch_subreddit(
@@ -58,7 +75,7 @@ def _fetch_subreddit(
 
 def fetch_reddit_posts(
     ticker: str,
-    subreddits: Iterable[str] = DEFAULT_SUBREDDITS,
+    subreddits: Optional[Iterable[str]] = None,
     limit_per_sub: int = 5,
     timeout: float = 10.0,
     inter_request_delay: float = 0.4,
@@ -69,6 +86,7 @@ def fetch_reddit_posts(
     ``inter_request_delay`` keeps us under Reddit's public rate limit
     (~10 req/min per IP) even if the caller queries many subreddits.
     """
+    subreddits = tuple(subreddits) if subreddits is not None else subreddits_for(ticker)
     blocks = []
     total_posts = 0
     for i, sub in enumerate(subreddits):
