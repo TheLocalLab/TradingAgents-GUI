@@ -627,7 +627,8 @@ def runs_stats():
         _add(by_model[deep_m],      r)
         _add(by_ticker[ticker],     r)
         decision = (r.decision or "").upper()
-        for label in ("BUY", "SELL", "HOLD"):
+        # UNDERWEIGHT/OVERWEIGHT first so the finer tiers aren't lost.
+        for label in ("UNDERWEIGHT", "OVERWEIGHT", "BUY", "SELL", "HOLD", "REVIEW"):
             if label in decision:
                 by_decision[label] += 1
                 break

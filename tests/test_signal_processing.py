@@ -51,8 +51,9 @@ class TestParseRating:
         )
         assert parse_rating(text) == "Sell"
 
-    def test_no_rating_returns_default(self):
-        assert parse_rating("No clear directional signal at this time.") == "Hold"
+    def test_no_rating_returns_review(self):
+        # No readable rating is flagged for review, never a tradeable Hold (#1170).
+        assert parse_rating("No clear directional signal at this time.") == "REVIEW"
 
     def test_no_rating_custom_default(self):
         assert parse_rating("Plain prose.", default="Underweight") == "Underweight"
@@ -87,4 +88,4 @@ class TestSignalProcessor:
 
     def test_default_when_no_rating_present(self):
         sp = SignalProcessor()
-        assert sp.process_signal("Plain prose without a recommendation.") == "Hold"
+        assert sp.process_signal("Plain prose without a recommendation.") == "REVIEW"
