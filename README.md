@@ -8,6 +8,14 @@ A polished local web GUI on top of [TauricResearch/TradingAgents](https://github
 
 ![TradingAgents-GUI — Analyze tab](assets/gui-analyze.png)
 
+## 🎥 Video tutorial
+
+[![Run This Multi Agent AI Trading System Locally with GPT, Claude, or Ollama — click to watch on YouTube](https://img.youtube.com/vi/nBzlFPYY76s/maxresdefault.jpg)](https://youtu.be/nBzlFPYY76s)
+
+**[▶ Watch the step-by-step walkthrough on YouTube](https://youtu.be/nBzlFPYY76s)** — installing the GUI and running your first analysis with GPT, Claude, or a local Ollama model.
+
+> This is an open-source project that keeps changing, so small details in the UI may differ from the video. This README and the [CHANGELOG](CHANGELOG.md) are always the current reference.
+
 ## Example reports
 
 Each run produces a multi-section markdown report (Market / Sentiment / News / Fundamentals → Research debate → Trade plan → Risk debate → Portfolio decision). Live samples produced by the pipeline:
